@@ -1,0 +1,16 @@
+schema = "mukoz.suite/1"
+id = "arith.add64.aarch64.apple"
+contract = "contract.toml"
+binding = "binding.aarch64_apple.toml"
+
+[artifact]
+path = "../../fixtures/aarch64/add64.bin"
+
+[generate]
+seed = "20261004"
+boundary = "product"
+random_cases = 4096
+
+[limits]
+instructions_per_case = 10000
+wall_ms_per_case = 1000

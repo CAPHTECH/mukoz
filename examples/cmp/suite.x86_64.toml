@@ -1,0 +1,12 @@
+schema = "mukoz.suite/1"
+id = "cmp.less.x86_64"
+contract = "contract.toml"
+binding = "binding.x86_64.toml"
+
+[artifact]
+path = "../../fixtures/x86_64/cmp.bin"
+
+[generate]
+seed = "cmp"
+boundary = "product"
+random_cases = 1024

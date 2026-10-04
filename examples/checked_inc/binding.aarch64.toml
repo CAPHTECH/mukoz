@@ -1,0 +1,24 @@
+schema = "mukoz.binding/1"
+id = "counter.checked_inc@aarch64-aapcs64"
+contract = "counter.checked_inc"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "addr(counter)"
+x1 = "input.n"
+
+[results]
+status = "x0"
+
+[regions.counter]
+size = "bv64(8)"
+init = "before.count"
+access = "rw"
+observe_as = "after.count"
+
+[completion]
+kind = "return_to_sentinel"

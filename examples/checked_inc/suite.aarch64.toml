@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "counter.checked_inc.aarch64"
+contract = "contract.toml"
+binding = "binding.aarch64.toml"
+
+[artifact]
+path = "../../fixtures/aarch64/checked_inc.bin"
+
+[generate]
+seed = "3"
+random_cases = 1024

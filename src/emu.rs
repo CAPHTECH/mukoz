@@ -981,7 +981,14 @@ impl Executor<'_> {
                 }
                 let mut s = st.borrow_mut();
                 if s.stop.is_none() {
-                    s.stop = Some(Stop::ForbiddenEffect { pc_offset: loc(pc_insn), effect: format!("interrupt/exception {intno} (e.g. svc/int/brk)") });
+                    // A64 EXCP_UDEF (1): the engine raises it both for architecturally undefined
+                    // encodings and for instructions it does not implement, so it cannot be
+                    // blamed on the subject (docs/01 P5): unsupported, not a forbidden effect.
+                    s.stop = Some(if isa == Isa::Aarch64 && intno == 1 {
+                        Stop::InvalidInstruction { pc_offset: loc(pc_insn) }
+                    } else {
+                        Stop::ForbiddenEffect { pc_offset: loc(pc_insn), effect: format!("interrupt/exception {intno} (e.g. svc/int/brk)") }
+                    });
                 }
                 drop(s);
                 let _ = uc.emu_stop();

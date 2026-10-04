@@ -1,0 +1,25 @@
+schema = "mukoz.contract/1"
+id = "cmp.less"
+boundary = "routine"
+
+[inputs]
+a = "bv64"
+b = "bv64"
+
+[results]
+signed = "bv64"
+unsigned = "bv64"
+
+[[ensures]]
+id = "signed"
+expr = "result.signed == ite(slt(input.a, input.b), bv64(1), bv64(0))"
+
+[[ensures]]
+id = "unsigned"
+expr = "result.unsigned == ite(ult(input.a, input.b), bv64(1), bv64(0))"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

@@ -1,0 +1,19 @@
+schema = "mukoz.binding/1"
+id = "cmp.less@aarch64"
+contract = "cmp.less"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "input.a"
+x1 = "input.b"
+
+[results]
+signed = "x0"
+unsigned = "x1"
+
+[completion]
+kind = "return_to_sentinel"
