@@ -1,0 +1,29 @@
+schema = "mukoz.binding/1"
+id = "app.todo@x86_64-raw"
+contract = "app.todo"
+target = "x86_64/raw/sysv-x86_64/linux"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[process]
+argv0 = "todo"
+argv = ['''ite(input.op == bv8(0), b"add", ite(input.op == bv8(1), b"list", ite(input.op == bv8(2), b"done", ite(input.op == bv8(3), b"rm", ite(input.op == bv8(4), b"clear", ite(input.op == bv8(5), b"frob", b""))))))''', '''ite(input.op == bv8(0), input.text, ite(input.op == bv8(2) or input.op == bv8(3), ite(input.idkind == bv8(0), ite(udiv(len(before.db), bv64(72)) == bv64(0), b"1", dec(u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)))), ite(input.idkind == bv8(1), dec(input.idnum), ite(input.idkind == bv8(2), concat(b"00", ite(udiv(len(before.db), bv64(72)) == bv64(0), b"1", dec(u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72))))), ite(input.idkind == bv8(3), b"", ite(input.idkind == bv8(4), b"7a", ite(input.idkind == bv8(5), b"12345678901", b"4294967296")))))), input.text))''']
+argc = "input.nargs"
+data_bytes = 65536
+
+[files.db]
+path = "todo.db"
+init = "before.db"
+exists = "before.db_exists"
+observe_as = "after.db"
+exists_as = "after.db_exists"
+
+[results]
+code = "exit_status"
+out = "stdout"
+err = "stderr"
+
+[completion]
+kind = "exit"

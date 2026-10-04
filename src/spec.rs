@@ -686,6 +686,9 @@ pub struct VarGenFile {
     /// (then cutting to the chosen length), e.g. valid and invalid UTF-8 sequences.
     #[serde(default)]
     pub pieces: Vec<String>,
+    /// The value is this expression over earlier variables (a derived input, e.g. a
+    /// well-formed file built from simpler generated parts). Excludes every other field.
+    pub expr: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]

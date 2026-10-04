@@ -1,0 +1,84 @@
+schema = "mukoz.contract/1"
+id = "app.todo"
+boundary = "process"
+modifies = ["db", "db_exists"]
+
+# argv[1] is chosen by `op` (0 add, 1 list, 2 done, 3 rm, 4 clear, 5 an unknown word, 6 an empty
+# string); `nargs` arguments follow the program name. For done/rm, argv[2] is built from `idkind`:
+# 0 the id of record `pick` (mod count), 1 the decimal `idnum`, 2 that record id with "00" in front,
+# 3..6 malformed (empty, letters, 11 digits, > 4294967295). The list file is built from
+# the derived inputs below (see the suite), so it is always well-formed.
+[inputs]
+op = "bv8"
+nargs = "bv64"
+text = { type = "bytes", max_len = 70 }
+idkind = "bv8"
+pick = "bv64"
+idnum = "bv32"
+nrec = "bv64"
+base = "bv32"
+gap = "bv8"
+flags = "bv64"
+lsel = "bv8"
+pool = { type = "bytes", max_len = 120 }
+exists = "bool"
+
+[state]
+db = { type = "bytes", max_len = 3600 }
+db_exists = "bool"
+
+[results]
+code = "bv8"
+out = { type = "bytes", max_len = 4096 }
+err = { type = "bytes", max_len = 128 }
+
+# A missing file is an empty list (the generator gives before.db = "" then).
+[[requires]]
+id = "missing_is_empty"
+expr = "before.db_exists or len(before.db) == bv64(0)"
+
+[[ensures]]
+id = "usage"
+expr = '''ite(not ((input.op == bv8(0) and input.nargs == bv64(2)) or (input.op == bv8(1) and input.nargs == bv64(1)) or (input.op == bv8(2) and input.nargs == bv64(2)) or (input.op == bv8(3) and input.nargs == bv64(2)) or (input.op == bv8(4) and input.nargs == bv64(1))), (result.code == bv8(2) and len(result.out) == bv64(0) and result.err == b"usage: todo add TEXT | list | done ID | rm ID | clear\n" and (after.db == before.db and after.db_exists == before.db_exists)), true)'''
+
+[[ensures]]
+id = "add_bad_text"
+expr = '''ite(input.op == bv8(0) and input.nargs == bv64(2) and not (ugt(len(input.text), bv64(0)) and ule(len(input.text), bv64(64))), (result.code == bv8(1) and len(result.out) == bv64(0) and result.err == b"error: bad text\n" and (after.db == before.db and after.db_exists == before.db_exists)), true)'''
+
+[[ensures]]
+id = "add_full"
+expr = '''ite(input.op == bv8(0) and input.nargs == bv64(2) and (ugt(len(input.text), bv64(0)) and ule(len(input.text), bv64(64))) and udiv(len(before.db), bv64(72)) == bv64(50), (result.code == bv8(1) and len(result.out) == bv64(0) and result.err == b"error: full\n" and (after.db == before.db and after.db_exists == before.db_exists)), true)'''
+
+[[ensures]]
+id = "add_appends"
+expr = '''ite(input.op == bv8(0) and input.nargs == bv64(2) and (ugt(len(input.text), bv64(0)) and ule(len(input.text), bv64(64))) and ult(udiv(len(before.db), bv64(72)), bv64(50)), (result.code == bv8(0) and len(result.err) == bv64(0)) and result.out == concat(b"added ", concat(dec(ite(udiv(len(before.db), bv64(72)) == bv64(0), bv32(1), u32le(before.db, (udiv(len(before.db), bv64(72)) - bv64(1)) * bv64(72)) + bv32(1))), b"\n")) and after.db_exists and after.db == concat(before.db, concat(le_bytes(ite(udiv(len(before.db), bv64(72)) == bv64(0), bv32(1), u32le(before.db, (udiv(len(before.db), bv64(72)) - bv64(1)) * bv64(72)) + bv32(1))), concat(hex"00", concat(le_bytes(extract(len(input.text), 7, 0)), concat(hex"0000", slice(concat(input.text, hex"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), bv64(0), bv64(64))))))), true)'''
+
+[[ensures]]
+id = "list"
+expr = '''ite(input.op == bv8(1) and input.nargs == bv64(1), (result.code == bv8(0) and len(result.err) == bv64(0)) and result.out == ite(udiv(len(before.db), bv64(72)) == bv64(0), b"no items\n", (join i in bv64(0)..udiv(len(before.db), bv64(72)): concat(dec(u32le(before.db, i * bv64(72))), concat(ite(before.db[i * bv64(72) + bv64(4)] == bv8(1), b" [x] ", b" [ ] "), concat(slice(before.db, i * bv64(72) + bv64(8), zext(before.db[i * bv64(72) + bv64(5)], 64)), b"\n"))))) and (after.db == before.db and after.db_exists == before.db_exists), true)'''
+
+[[ensures]]
+id = "bad_id"
+expr = '''ite((input.op == bv8(2) or input.op == bv8(3)) and input.nargs == bv64(2) and not (ult(input.idkind, bv8(2)) or (input.idkind == bv8(2) and ite(udiv(len(before.db), bv64(72)) == bv64(0), true, ule(len(dec(u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)))), bv64(8))))), (result.code == bv8(1) and len(result.out) == bv64(0) and result.err == b"error: bad id\n" and (after.db == before.db and after.db_exists == before.db_exists)), true)'''
+
+[[ensures]]
+id = "no_such_item"
+expr = '''ite((input.op == bv8(2) or input.op == bv8(3)) and input.nargs == bv64(2) and (ult(input.idkind, bv8(2)) or (input.idkind == bv8(2) and ite(udiv(len(before.db), bv64(72)) == bv64(0), true, ule(len(dec(u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)))), bv64(8))))) and not ugt((count i in bv64(0)..udiv(len(before.db), bv64(72)): u32le(before.db, i * bv64(72)) == ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum)), bv64(0)), (result.code == bv8(1) and len(result.out) == bv64(0) and result.err == b"error: no such item\n" and (after.db == before.db and after.db_exists == before.db_exists)), true)'''
+
+[[ensures]]
+id = "done"
+expr = '''ite(input.op == bv8(2) and input.nargs == bv64(2) and (ult(input.idkind, bv8(2)) or (input.idkind == bv8(2) and ite(udiv(len(before.db), bv64(72)) == bv64(0), true, ule(len(dec(u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)))), bv64(8))))) and ugt((count i in bv64(0)..udiv(len(before.db), bv64(72)): u32le(before.db, i * bv64(72)) == ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum)), bv64(0)), (result.code == bv8(0) and len(result.err) == bv64(0)) and result.out == concat(b"done ", concat(dec(ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum)), b"\n")) and after.db_exists and after.db == (join i in bv64(0)..udiv(len(before.db), bv64(72)): ite(u32le(before.db, i * bv64(72)) == ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum), concat(slice(slice(before.db, i * bv64(72), bv64(72)), bv64(0), bv64(4)), concat(hex"01", slice(slice(before.db, i * bv64(72), bv64(72)), bv64(5), bv64(67)))), slice(before.db, i * bv64(72), bv64(72)))), true)'''
+
+[[ensures]]
+id = "rm"
+expr = '''ite(input.op == bv8(3) and input.nargs == bv64(2) and (ult(input.idkind, bv8(2)) or (input.idkind == bv8(2) and ite(udiv(len(before.db), bv64(72)) == bv64(0), true, ule(len(dec(u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)))), bv64(8))))) and ugt((count i in bv64(0)..udiv(len(before.db), bv64(72)): u32le(before.db, i * bv64(72)) == ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum)), bv64(0)), (result.code == bv8(0) and len(result.err) == bv64(0)) and result.out == concat(b"removed ", concat(dec(ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum)), b"\n")) and after.db_exists and after.db == (join i in bv64(0)..udiv(len(before.db), bv64(72)): ite(u32le(before.db, i * bv64(72)) == ite(input.idkind == bv8(0) or input.idkind == bv8(2), u32le(before.db, urem(input.pick, udiv(len(before.db), bv64(72))) * bv64(72)), input.idnum), b"", slice(before.db, i * bv64(72), bv64(72)))), true)'''
+
+[[ensures]]
+id = "clear"
+expr = '''ite(input.op == bv8(4) and input.nargs == bv64(1), (result.code == bv8(0) and len(result.err) == bv64(0)) and result.out == concat(b"cleared ", concat(dec((count i in bv64(0)..udiv(len(before.db), bv64(72)): before.db[i * bv64(72) + bv64(4)] == bv8(1))), b"\n")) and after.db_exists == before.db_exists and after.db == (join i in bv64(0)..udiv(len(before.db), bv64(72)): ite(before.db[i * bv64(72) + bv64(4)] == bv8(1), b"", slice(before.db, i * bv64(72), bv64(72)))), true)'''
+
+[effects]
+allow = ["read", "write", "open", "close", "lseek"]
+
+[termination]
+kind = "must_exit"

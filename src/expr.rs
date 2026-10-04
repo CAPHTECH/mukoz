@@ -150,6 +150,8 @@ pub enum Expr {
     Forall(String, Box<Expr>, Box<Expr>, Box<Expr>),
     /// Number of i in [lo, hi) for which the body holds (bv64).
     Count(String, Box<Expr>, Box<Expr>, Box<Expr>),
+    /// Concatenation of the bytes body for i in [lo, hi).
+    Join(String, Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -214,6 +216,7 @@ impl fmt::Display for Expr {
             Expr::Index(b, i) => write!(f, "{b}[{i}]"),
             Expr::Forall(v, lo, hi, body) => write!(f, "(forall {v} in {lo}..{hi}: {body})"),
             Expr::Count(v, lo, hi, body) => write!(f, "(count {v} in {lo}..{hi}: {body})"),
+            Expr::Join(v, lo, hi, body) => write!(f, "(join {v} in {lo}..{hi}: {body})"),
         }
     }
 }
@@ -509,7 +512,7 @@ impl Parser {
                 match id.as_str() {
                     "true" => return self.node(Expr::Lit(Value::Bool(true))),
                     "false" => return self.node(Expr::Lit(Value::Bool(false))),
-                    "forall" | "count" => {
+                    "forall" | "count" | "join" => {
                         let Some(Tok::Ident(v)) = self.peek().cloned() else {
                             return Err(format!("expected variable after {id}"));
                         };
@@ -523,10 +526,10 @@ impl Parser {
                         let hi = self.bitor()?;
                         self.expect_sym(":")?;
                         let body = self.expr()?;
-                        let e = if id == "forall" {
-                            Expr::Forall(v, Box::new(lo), Box::new(hi), Box::new(body))
-                        } else {
-                            Expr::Count(v, Box::new(lo), Box::new(hi), Box::new(body))
+                        let e = match id.as_str() {
+                            "forall" => Expr::Forall(v, Box::new(lo), Box::new(hi), Box::new(body)),
+                            "count" => Expr::Count(v, Box::new(lo), Box::new(hi), Box::new(body)),
+                            _ => Expr::Join(v, Box::new(lo), Box::new(hi), Box::new(body)),
                         };
                         return self.node(e);
                     }
@@ -670,6 +673,15 @@ fn tc(e: &Expr, cx: &CheckCtx, locals: &mut Vec<String>) -> Result<Ty, String> {
             expect(t?, Ty::Bool, &format!("{what} body"))?;
             Ok(if what == "forall" { Ty::Bool } else { Ty::Bv(64) })
         }
+        Expr::Join(v, lo, hi, body) => {
+            expect(tc(lo, cx, locals)?, Ty::Bv(64), "join bound")?;
+            expect(tc(hi, cx, locals)?, Ty::Bv(64), "join bound")?;
+            locals.push(v.clone());
+            let t = tc(body, cx, locals);
+            locals.pop();
+            expect(t?, Ty::Bytes, "join body")?;
+            Ok(Ty::Bytes)
+        }
         Expr::Call(name, args) => tc_call(name, args, cx, locals),
     }
 }
@@ -765,6 +777,19 @@ fn tc_call(name: &str, args: &[Expr], cx: &CheckCtx, locals: &mut Vec<String>) -
                 return Err("le_bytes needs a bitvector".into());
             }
             Ok(Ty::Bytes)
+        }
+        "dec" => {
+            arity(1)?;
+            if !matches!(tc(&args[0], cx, locals)?, Ty::Bv(_)) {
+                return Err("dec needs a bitvector (unsigned decimal text)".into());
+            }
+            Ok(Ty::Bytes)
+        }
+        "u16le" | "u32le" | "u64le" => {
+            arity(2)?;
+            expect(tc(&args[0], cx, locals)?, Ty::Bytes, name)?;
+            expect(tc(&args[1], cx, locals)?, Ty::Bv(64), &format!("{name} offset"))?;
+            Ok(Ty::Bv(match name { "u16le" => 16, "u32le" => 32, _ => 64 }))
         }
         "addr" if cx.allow_addr => {
             arity(1)?;
@@ -986,6 +1011,26 @@ fn ev_inner(e: &Expr, cx: &EvalCtx, locals: &mut Vec<(String, u64)>, tr: &mut Tr
             }
             Ok(Value::Bool(true))
         }
+        Expr::Join(v, lo, hi, body) => {
+            let (_, lo) = bvs(&ev(lo, cx, locals, tr)?)?;
+            let (_, hi) = bvs(&ev(hi, cx, locals, tr)?)?;
+            if hi > lo && hi - lo > MAX_FORALL {
+                return Err(format!("join range {lo}..{hi} exceeds {MAX_FORALL}"));
+            }
+            let mut out = Vec::new();
+            let mut i = lo;
+            while i < hi {
+                locals.push((v.clone(), i));
+                let r = ev(body, cx, locals, &mut None);
+                locals.pop();
+                out.extend_from_slice(bytesv(&r?)?);
+                if out.len() > 1 << 20 {
+                    return Err("join result exceeds 1 MiB".into());
+                }
+                i += 1;
+            }
+            Ok(Value::Bytes(out))
+        }
         Expr::Count(v, lo, hi, body) => {
             let (_, lo) = bvs(&ev(lo, cx, locals, tr)?)?;
             let (_, hi) = bvs(&ev(hi, cx, locals, tr)?)?;
@@ -1108,6 +1153,23 @@ fn call(name: &str, a: &[Value]) -> Result<Value, String> {
             let (w, x) = bvs(&a[0])?;
             Ok(Value::Bytes(x.to_le_bytes()[..(w / 8) as usize].to_vec()))
         }
+        "dec" => {
+            let (_, x) = bvs(&a[0])?;
+            Ok(Value::Bytes(x.to_string().into_bytes()))
+        }
+        "u16le" | "u32le" | "u64le" => {
+            let b = bytesv(&a[0])?;
+            let (_, off) = bvs(&a[1])?;
+            let n: usize = match name {
+                "u16le" => 2,
+                "u32le" => 4,
+                _ => 8,
+            };
+            let s = (off as usize).checked_add(n).and_then(|e| b.get(off as usize..e)).ok_or_else(|| format!("{name} at {off} out of range for bytes of length {}", b.len()))?;
+            let mut buf = [0u8; 8];
+            buf[..n].copy_from_slice(s);
+            Ok(Value::Bv((n * 8) as u8, u64::from_le_bytes(buf)))
+        }
         _ => Err(format!("unknown function `{name}`")),
     }
 }
@@ -1115,6 +1177,26 @@ fn call(name: &str, a: &[Value]) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn known_answers_join_dec_and_loads() {
+        let vars = ValEnv::new();
+        let empty = BTreeMap::new();
+        let cx = EvalCtx { vars: &vars, region_addrs: &empty };
+        let ev = |s: &str| eval(&parse(s).unwrap(), &cx).unwrap();
+        assert_eq!(ev(r#"join i in bv64(0)..bv64(3): concat(dec(i + bv64(9)), b",")"#), Value::Bytes(b"9,10,11,".to_vec()));
+        assert_eq!(ev("join i in bv64(2)..bv64(2): b\"x\""), Value::Bytes(vec![]));
+        assert_eq!(ev("dec(bv64(0xffffffffffffffff))"), Value::Bytes(b"18446744073709551615".to_vec()));
+        assert_eq!(ev("dec(bv8(0))"), Value::Bytes(b"0".to_vec()));
+        assert_eq!(ev(r#"u32le(hex"01020304ff", bv64(1))"#), Value::Bv(32, 0xff04_0302));
+        assert_eq!(ev(r#"u16le(hex"0102", bv64(0))"#), Value::Bv(16, 0x0201));
+        assert!(eval(&parse(r#"u32le(hex"010203", bv64(0))"#).unwrap(), &cx).is_err());
+        let tv = TypeEnv::new();
+        let ck = |s: &str| typecheck(&parse(s).unwrap(), &CheckCtx { vars: &tv, allow_addr: false, regions: &[] });
+        assert_eq!(ck("join i in bv64(0)..bv64(2): dec(i)"), Ok(Ty::Bytes));
+        assert!(ck("join i in bv64(0)..bv64(2): i").is_err());
+        assert_eq!(ck(r#"u64le(b"", bv64(0))"#), Ok(Ty::Bv(64)));
+    }
 
     #[test]
     fn explain_false_names_the_witness_and_both_sides() {

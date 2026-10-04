@@ -1,0 +1,43 @@
+schema = "mukoz.suite/1"
+id = "app.todo"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "todo"
+random_cases = 1500
+
+[generate.vars.op]
+max = "bv8(6)"
+
+[generate.vars.nargs]
+max = "bv64(2)"
+
+[generate.vars.text]
+bytes = "ascii"
+
+[generate.vars.idkind]
+max = "bv8(6)"
+
+[generate.vars.base]
+# ids stay below 2^32: base + 1 + 49 * 256 <= 0xffffffff
+max = "bv32(4294950000)"
+values = ["0", "4294950000"]
+
+[generate.vars.nrec]
+max = "bv64(50)"
+values = ["49"]
+
+[generate.vars.pool]
+len = "bv64(120)"
+bytes = "ascii"
+
+[generate.vars.db]
+expr = '''ite(input.exists, (join i in bv64(0)..input.nrec: concat(le_bytes(extract((zext(input.base, 64) + bv64(1) + i * (zext(input.gap, 64) + bv64(1))), 31, 0)), concat(le_bytes(extract(lshr(input.flags, i) & bv64(1), 7, 0)), concat(le_bytes(extract((bv64(1) + urem(i * bv64(7) + zext(input.lsel, 64), bv64(64))), 7, 0)), concat(hex"0000", slice(concat(slice(input.pool, i, (bv64(1) + urem(i * bv64(7) + zext(input.lsel, 64), bv64(64)))), hex"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), bv64(0), bv64(64))))))), b"")'''
+
+[generate.vars.db_exists]
+expr = "input.exists"
+
+[limits]
+instructions_per_case = 2000000
+wall_ms_per_case = 5000

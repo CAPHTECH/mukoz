@@ -3,3 +3,5 @@
 .mukoz/
 /eval/oracle/runner
 /eval/reference/bin/
+/eval/todo/bin/
+/eval/todo/launch

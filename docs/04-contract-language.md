@@ -426,7 +426,7 @@ AIが生成と検査を繰り返すとき、前に見つかった失敗が再発
 | Suite の `contract` / `binding` | **ファイルパス**(Suite からの相対)。ID 参照は未実装 |
 | `executors` | `["emulated"]` のみ |
 | `[generate]` | `seed`・`boundary`(`product` / `none`)・`random_cases` |
-| `[generate.vars.<名前>]` | `values`: 追加の値(bv は 10進/0x16進の文字列、bytes は16進文字列。`hex"..."` 形式ではない)。`len`: bytes の長さの式(前の変数を参照可。例 `len(input.src) + len(input.src)`)。`max`: bv の上限の式(含む。前の変数を参照可)。`bytes`: bytes の値域 `nonzero` / `ascii`。型に合わない項目はエラー |
+| `[generate.vars.<名前>]` | `values`: 追加の値(bv は 10進/0x16進の文字列、bytes は16進文字列。`hex"..."` 形式ではない)。`len`: bytes の長さの式(前の変数を参照可。例 `len(input.src) + len(input.src)`)。`max`: bv の上限の式(含む。前の変数を参照可)。`bytes`: bytes の値域 `nonzero` / `ascii`。`pieces`: bytes を重み付きの16進断片(`"c280:20"`)の連結で作る。`expr`: 値を前の変数の式で直接与える(派生入力。例: 整形済みのファイル内容を単純な変数から組み立てる。ほかの項目とは併用不可、`max_len` を超えたら `PLAN_ERROR`)。型に合わない項目はエラー |
 | 境界値 | bv は `max` があれば {0, 1, max/2, max−1, max}、なければ 4.7 の既定。bytes は `len` があればその長さ1つ、なければ {0, 1, max_len/2, max_len}。これに `values` を足す。直積が `max_cases/2` を超えたら「1変数ずつ境界値・他はランダム」に切り替え、`plan_stats.boundary_mode = "one_at_a_time"` と `limitations` に出す |
 | 生成された入力の確認 | `data.assessment.scope.input_summary` に変数ごとの範囲(bv: min・max・異なる値の数・0 と全1の件数、bytes: 長さの min・max・異なる長さの数・空の件数、bool: 件数)を出す |
 | 停止しない | `must_return` で命令数の上限に達したら HOLD(`BUDGET_EXHAUSTED`)。停止しないことは有限の実行では示せないため REJECT にしない(I1) |
@@ -435,6 +435,7 @@ AIが生成と検査を繰り返すとき、前に見つかった失敗が再発
 | 領域の配置の生成 | `[generate] placement = "varied"`(既定): 各領域の開始 alignment を case ごとに 0〜15 バイトずらす(case の seed から導くので、再実行・回帰でも同じ配置になる)。`"aligned"` で 16 バイト境界に固定。領域どうしの相対位置・上位番地への配置は未実装 |
 | machine claim | `machine.returned`(SP の復元を含む)・`machine.abi.callee_saved`・`machine.abi.flags`(x86 の DF)・`machine.abi.reserved`(apple-arm64 の x18 のみ)・`machine.memory.access`・`effects.no_forbidden`。`machine.abi.stack` は独立の claim ではなく `machine.returned` に含む |
 | 式 | 4.4 の型付き式。整数リテラルは `bvN(...)` で幅を明示する(契約内の裸の整数は `CONTRACT_TYPE_ERROR`)。`mukoz expr check` は構文だけを検査し、型は契約の読込み時に検査する |
-| `forall` / `count` の範囲 | 1式あたり 65,536 まで |
-| プロセス Binding・環境モデル | 未実装(境界は `routine` のみ) |
+| `forall` / `count` / `join` の範囲 | 1式あたり 65,536 まで。`join i in a..b: <bytes>` は本体の連結(結果は 1 MiB まで) |
+| 追加の関数 | `dec(bv)`: 符号なし10進の文字列(bytes)。`u16le` / `u32le` / `u64le(bytes, off)`: リトルエンディアンの読み出し(範囲外は評価エラー → INCONCLUSIVE) |
+| プロセス Binding・環境モデル | 13章 |
 

@@ -58,7 +58,7 @@ HOLD は「合格とも不合格とも言えない」。直すべき所は `reas
 ## 12.4 契約・Suite を書くとき
 
 - まず `mukoz expr check '<式>'` で構文を確かめる(型は契約の読込みで検査される)。整数は `bv64(...)` のように幅を明示する。
-- **依存する入力は生成器で作る。**`requires` で捨てるのではなく、`[generate.vars.<名前>]` の `len`(bytes の長さ)・`max`(bv の上限)で、前の変数に依存させる。例: `len = "len(input.src) + len(input.src)"`。
+- **依存する入力は生成器で作る。**`requires` で捨てるのではなく、`[generate.vars.<名前>]` の `len`(bytes の長さ)・`max`(bv の上限)で、前の変数に依存させる。例: `len = "len(input.src) + len(input.src)"`。整形済みの構造(固定長レコードの列など)は、単純な変数から `expr` と `join` で組み立てる(`expr = '''join i in bv64(0)..input.n: <レコードの bytes 式>'''`)。
 - 境界にしたい値は `values` に足す。
 - **何が生成されたかは `data.assessment.scope.input_summary` で見る**(変数ごとの範囲・異なる値の数・0 や空の件数)。`plan_stats` には境界値の生成方式(`boundary_mode`)と、`requires` で捨てた件数が出る。
 - 領域の開始位置は既定でケースごとにずれる(`placement = "varied"`)。整列を仮定するコードはここで落ちる。

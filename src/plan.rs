@@ -87,6 +87,12 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
     // Fields that do not apply to a variable's type are errors, never silently ignored.
     for s in &out {
         let g = &s.generator;
+        if g.expr.is_some() {
+            if g.len.is_some() || g.max.is_some() || g.bytes.is_some() || !g.values.is_empty() || !g.pieces.is_empty() {
+                bail!("generate.vars.{}: `expr` gives the value directly; remove len/max/bytes/values/pieces", s.name);
+            }
+            continue;
+        }
         let bad = |field: &str, ty: &str| anyhow!("generate.vars.{}.{field} does not apply to a {ty} variable", s.name);
         match s.vt.ty {
             Ty::Bool | Ty::Bv(_) if !g.pieces.is_empty() => return Err(bad("pieces", "non-bytes")),
@@ -127,7 +133,7 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
     // Order slots so that variables referenced by `len`/`max` come first.
     let deps = |s: &VarSlot| -> Result<Vec<String>> {
         let mut d = Vec::new();
-        for src in [&s.generator.len, &s.generator.max].into_iter().flatten() {
+        for src in [&s.generator.len, &s.generator.max, &s.generator.expr].into_iter().flatten() {
             let e = expr::parse(src).map_err(|m| anyhow!("generate.vars.{}: {m}", s.name))?;
             collect_paths(&e, &mut d);
         }
@@ -164,7 +170,7 @@ fn collect_paths(e: &expr::Expr, out: &mut Vec<String>) {
             collect_paths(b, out);
         }
         Call(_, args) => args.iter().for_each(|a| collect_paths(a, out)),
-        Forall(_, a, b, c) | Count(_, a, b, c) => {
+        Forall(_, a, b, c) | Count(_, a, b, c) | Join(_, a, b, c) => {
             collect_paths(a, out);
             collect_paths(b, out);
             collect_paths(c, out);
@@ -283,8 +289,26 @@ fn eval_len(slot: &VarSlot, env: &ValEnv) -> Result<Option<u64>> {
     }
 }
 
+fn eval_derived(slot: &VarSlot, src: &str, env: &ValEnv) -> Result<Value> {
+    let e = expr::parse(src).map_err(|m| anyhow!("generate.vars.{}.expr: {m}", slot.name))?;
+    let empty = BTreeMap::new();
+    let v = expr::eval(&e, &EvalCtx { vars: env, region_addrs: &empty }).map_err(|m| anyhow!("generate.vars.{}.expr: {m}", slot.name))?;
+    if v.ty() != slot.vt.ty {
+        bail!("generate.vars.{}.expr gives {} but the variable is {}", slot.name, v.ty(), slot.vt.ty);
+    }
+    if let Value::Bytes(b) = &v {
+        if b.len() as u64 > slot.vt.max_len {
+            bail!("PLAN_ERROR: generate.vars.{}.expr gave {} bytes, more than max_len {}", slot.name, b.len(), slot.vt.max_len);
+        }
+    }
+    Ok(v)
+}
+
 /// Boundary candidates for one variable, given values of earlier variables.
 fn candidates(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Vec<Value>> {
+    if let Some(src) = &slot.generator.expr {
+        return Ok(vec![eval_derived(slot, src, env)?]);
+    }
     match slot.vt.ty {
         Ty::Bool => Ok(vec![Value::Bool(false), Value::Bool(true)]),
         Ty::Bv(w) => {
@@ -331,6 +355,9 @@ fn candidates(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Vec<
 }
 
 fn random_value(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Value> {
+    if let Some(src) = &slot.generator.expr {
+        return eval_derived(slot, src, env);
+    }
     Ok(match slot.vt.ty {
         Ty::Bool => Value::Bool(rng.below(2) == 1),
         Ty::Bv(w) => match eval_max(slot, env)? {
