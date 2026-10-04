@@ -179,6 +179,44 @@ def count_byte_fast(mutant=False):
     return a.bytes()
 
 
+def movn(d, imm, sf=1): return (0x92800000 if sf else 0x12800000) | (imm << 5) | d
+
+
+def utf8_count(mutant=False, lo_e0=0xA0, hi_ed=0x9F, hi_f4=0x8F, trunc=True):
+    a = Asm()
+    a(movz(2, 0), movz(3, 0))
+    a.label("loop"); a(cmp_r(2, 1)); a.bcond(HS, "ok")
+    a(ldrb_r(4, 0, 2), cmp_i(4, 0x80, 0)); a.bcond(HS, "multi")
+    a(add_i(2, 2, 1), add_i(3, 3, 1)); a.b("loop")
+    a.label("multi"); a(movz(6, 0x80, 0), movz(7, 0xBF, 0), cmp_i(4, 0xC2, 0)); a.bcond(LO, "bad")
+    a(cmp_i(4, 0xDF, 0)); a.bcond(LS, "need1")
+    a(cmp_i(4, 0xE0, 0)); a.bcond(EQ, "e0")
+    a(cmp_i(4, 0xEF, 0)); a.bcond(LS, "e1ef")
+    a(cmp_i(4, 0xF0, 0)); a.bcond(EQ, "f0")
+    a(cmp_i(4, 0xF3, 0)); a.bcond(LS, "need3")
+    a(cmp_i(4, 0xF4, 0)); a.bcond(EQ, "f4")
+    a.b("bad")
+    a.label("need1"); a(movz(5, 1)); a.b("check")
+    a.label("e0"); a(movz(6, lo_e0, 0), movz(5, 2)); a.b("check")
+    a.label("e1ef"); a(movz(5, 2), cmp_i(4, 0xED, 0)); a.bcond(NE, "check"); a(movz(7, hi_ed, 0)); a.b("check")
+    a.label("f0"); a(movz(6, 0x90, 0), movz(5, 3)); a.b("check")
+    a.label("f4"); a(movz(7, hi_f4, 0))
+    a.label("need3"); a(movz(5, 3))
+    a.label("check"); a(sub_r(8, 1, 2), sub_i(8, 8, 1), cmp_r(8, 5))
+    if trunc: a.bcond(LO, "bad")
+    else: a(NOP)
+    a(add_i(9, 2, 1), ldrb_r(10, 0, 9), cmp_r(10, 6, 0)); a.bcond(LO, "bad")
+    a(cmp_r(10, 7, 0)); a.bcond(HI, "bad")
+    a(movz(11, 2))
+    a.label("cont"); a(cmp_r(11, 5)); a.bcond(HI, "adv")
+    a(add_r(9, 2, 11), ldrb_r(10, 0, 9), ubfx(12, 10, 6, 2, 0), cmp_i(12, 2, 0)); a.bcond(NE, "bad")
+    a(add_i(11, 11, 1)); a.b("cont")
+    a.label("adv"); a(add_r(2, 2, 5), add_i(2, 2, 1), add_i(3, 3, 1)); a.b("loop")
+    a.label("bad"); a(movn(0, 0), RET)
+    a.label("ok"); a(mov_r(0, 3), RET)
+    return a.bytes()
+
+
 MUTANTS = {"count_byte_fast": "haszero", "base64": "pad", "count_byte": "widecmp", "memmove": "forward_only", "isqrt": "bit30", "hex_encode": "upper"}
 
 if __name__ == "__main__":
@@ -188,4 +226,7 @@ if __name__ == "__main__":
         f = globals()[name]
         open(os.path.join(out, f"{name}_a64.bin"), "wb").write(f())
         open(os.path.join(out, f"{name}_a64_mut_{mut}.bin"), "wb").write(f(True))
+    for mut, kw in {"overlong": dict(lo_e0=0x80), "surrogate": dict(hi_ed=0xBF), "above": dict(hi_f4=0xBF), "trunc": dict(trunc=False)}.items():
+        open(os.path.join(out, f"utf8_count_a64_mut_{mut}.bin"), "wb").write(utf8_count(**kw))
+    open(os.path.join(out, "utf8_count_a64.bin"), "wb").write(utf8_count())
     print("ok", sorted(MUTANTS))
