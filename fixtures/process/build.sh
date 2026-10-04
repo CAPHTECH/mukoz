@@ -11,6 +11,8 @@ as --64 --defsym LEN=5 -o "$tmp/h5.o" hello_x86.s && objcopy -O binary -j .text 
 ld -static -nostdlib --build-id=none -o hello_x86.elf "$tmp/h.o"
 ld -static -nostdlib --build-id=none -o hello_x86_mut_len.elf "$tmp/h5.o"
 as --64 -o "$tmp/heq.o" hello_x86_eq.s && ld -static -nostdlib --build-id=none -o hello_x86_eq.elf "$tmp/heq.o"
+as --64 --defsym LOOPS=1 -o "$tmp/f1.o" fake_accept_x86.s && ld -static -nostdlib --build-id=none -o fake_accept_x86.elf "$tmp/f1.o"
+as --64 --defsym LOOPS=0 -o "$tmp/f0.o" fake_accept_x86.s && ld -static -nostdlib --build-id=none -o fake_accept_x86_flood.elf "$tmp/f0.o"
 gcc -O2 -Wl,--build-id=none -o hello_dyn.elf hello_dyn.c
 CF="-O2 -static -nostdlib -fno-pie -no-pie -fno-stack-protector -fcf-protection=none -fno-asynchronous-unwind-tables -fno-builtin -Wl,--build-id=none"
 gcc $CF -o todo_x86.elf todo.c

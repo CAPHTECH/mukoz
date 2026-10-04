@@ -393,6 +393,14 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     let l = load(o.suite, o.artifact, o.modules)?;
     let target = l.binding.target.text.clone();
     let (regs, reg_na) = if l.suite.include_regressions { o.store.load_regressions(&l.contract, &target)? } else { (Vec::new(), 0) };
+    if regs.len() > crate::store::REGRESSION_LIMIT {
+        bail!(
+            "REGRESSION_LIMIT_EXCEEDED: {} regression cases for {} / {target} (limit {}); prune explicitly with `mukoz regressions prune`, they are never thinned silently",
+            regs.len(),
+            l.contract.id,
+            crate::store::REGRESSION_LIMIT
+        );
+    }
     let reg_ids: Vec<String> = regs.iter().map(|(id, _)| id.clone()).collect();
     let generated = plan::generate(&l.contract, &l.suite, regs.into_iter().map(|(_, c)| c).collect(), reg_na)?;
     o.store.put_object(&l.artifact)?;
@@ -538,6 +546,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     let mut summaries = summaries;
     let mut findings = Vec::new();
     let mut new_regressions = 0;
+    let mut regressions_not_stored = 0;
     for s in summaries.iter_mut().filter(|s| s.evaluation == Eval::Violated) {
         for (idx, (case_id, claims)) in per_case.iter().enumerate() {
             if s.counterexamples.len() >= CX_PER_PROPERTY {
@@ -584,8 +593,12 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "executor": if emulated { "emulated" } else { platform.native.as_deref().unwrap_or_default() },
             });
             o.store.put_item(&cx_id, &item)?;
-            if o.store.add_regression(&l.contract, &target, case, &cx_id)? {
-                new_regressions += 1;
+            match o.store.add_regression(&l.contract, &target, case, &cx_id) {
+                Ok(true) => new_regressions += 1,
+                Ok(false) => {}
+                // The verdict stands; the case that could not be kept is counted, not dropped silently.
+                Err(e) if e.to_string().starts_with("REGRESSION_LIMIT_EXCEEDED") => regressions_not_stored += 1,
+                Err(e) => return Err(e),
             }
             s.counterexamples.push(cx_id);
             if findings.len() < INLINE_FINDINGS && !findings.iter().any(|f: &serde_json::Value| f["property"] == json!(s.property)) {
@@ -645,6 +658,12 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     }
     if native_timeouts >= NATIVE_TIMEOUT_LIMIT {
         limitations.push(format!("native_cases_stopped_after_{NATIVE_TIMEOUT_LIMIT}_timeouts"));
+    }
+    if regressions_not_stored > 0 {
+        limitations.push(format!(
+            "regression_limit_reached_{regressions_not_stored}_new_cases_not_stored (limit {}; prune with `mukoz regressions prune`)",
+            crate::store::REGRESSION_LIMIT
+        ));
     }
     if !l.suite.include_regressions {
         limitations.push("regression_cases_excluded".into());

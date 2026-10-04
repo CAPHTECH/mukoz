@@ -478,6 +478,14 @@ pub fn generate(contract: &Contract, suite: &Suite, regressions: Vec<Case>, regr
         }
     }
 
+    // Refuse before generating: a huge random_cases must not exhaust memory first.
+    if (cases.len() as u64).saturating_add(suite.random_cases) > suite.limits.max_cases {
+        bail!(
+            "PLAN_LIMIT_EXCEEDED: {} cases planned, limit is {} (reduce generate.random_cases; cases are never dropped silently)",
+            (cases.len() as u64).saturating_add(suite.random_cases),
+            suite.limits.max_cases
+        );
+    }
     for _ in 0..suite.random_cases {
         let mut env = ValEnv::new();
         for s in &slots {

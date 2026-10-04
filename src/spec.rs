@@ -612,6 +612,13 @@ impl Binding {
                 exists_state: st(&ff.exists_as, "exists_as", Ty::Bool)?,
             });
         }
+        for f in &files {
+            // A path names a file inside the subject's (virtual or sandbox) file system only.
+            let rel = f.path.trim_start_matches('/');
+            if rel.is_empty() || rel.contains('\0') || rel.split('/').any(|c| c.is_empty() || c == "." || c == "..") {
+                bail!("BINDING_MISMATCH: file {} path `{}` must be a plain path without `.`, `..` or empty components", f.name, f.path);
+            }
+        }
         if files.iter().map(|f| &f.path).collect::<std::collections::BTreeSet<_>>().len() != files.len() {
             bail!("BINDING_MISMATCH: two [files] entries have the same path");
         }
