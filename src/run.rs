@@ -419,7 +419,26 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     }
     let summaries = judge::aggregate(&properties, &per_case, skipped);
     let generated_total = total + generated.stats.excluded_by_requires;
-    let (admission, reasons) = judge::admit(&summaries, total, generated_total, l.suite.limits.min_admitted_cases);
+    let (mut admission, mut reasons) = judge::admit(&summaries, total, generated_total, l.suite.limits.min_admitted_cases);
+    // docs/03 3.6 rule 4: emulated results count only with a valid EngineQualification.
+    let qualification = if emulated {
+        let (q, ran_now, ok) = crate::qualify::ensure(o.store, l.binding.target.isa);
+        if let Err(e) = &ok {
+            admission = Admission::Hold;
+            reasons.insert(0, e.clone());
+        }
+        json!({
+            "qualified": ok.is_ok(),
+            "run_during_this_check": ran_now,
+            "test_set": q["test_set"],
+            "vectors": q["vectors"],
+            "native_cross_check_passed": q["native_cross_check"]["passed"],
+            "unsupported_by_engine": q["unsupported_by_engine"],
+            "record": format!("host/{}.json", crate::qualify::record_name(l.binding.target.isa)),
+        })
+    } else {
+        json!(null)
+    };
 
     // Counterexamples: up to CX_PER_PROPERTY per violated property.
     let mut summaries = summaries;
@@ -566,6 +585,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 }).collect::<Vec<_>>(),
                 "monitors": l.image.monitors.iter().map(|m| json!({ "symbol": m.symbol, "contract": m.contract.id })).collect::<Vec<_>>(),
                 "platform": platform.json(),
+                "engine_qualification": qualification,
                 "quantification": "enumerated_cases_not_exhaustive",
                 "generator": plan::GENERATOR_VERSION,
                 "cases_planned": total,

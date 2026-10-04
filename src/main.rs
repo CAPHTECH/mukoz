@@ -8,6 +8,8 @@ mod judge;
 mod native;
 mod plan;
 mod policy;
+mod qualify;
+mod qualify_vectors;
 mod run;
 mod spec;
 mod store;
@@ -24,6 +26,7 @@ const USAGE: &str = "usage:
   mukoz regressions list <suite.toml> [--store <dir>]
   mukoz regressions prune <suite.toml> --case <id> [--store <dir>]
   mukoz platform probe | show [--store <dir>]
+  mukoz platform qualify --isa <x86_64|aarch64> [--store <dir>]
   mukoz expr check <expression>          (parse and print the normalized form)";
 
 struct Args {
@@ -38,7 +41,7 @@ fn parse_args() -> Result<Args, String> {
     while let Some(x) = it.next() {
         match x.as_str() {
             "--fail-fast" | "--gate" | "--help" | "-h" => a.flags.push(x),
-            "--artifact" | "--store" | "--case" | "--module" | "--policy" => {
+            "--artifact" | "--store" | "--case" | "--module" | "--policy" | "--isa" => {
                 let v = it.next().ok_or(format!("{x} needs a value"))?;
                 a.opts.push((x, v));
             }
@@ -208,6 +211,25 @@ fn real_main() -> i32 {
             }
             Err(e) => fail("platform probe", e, 4),
         },
+        ("platform", 2) if a.pos[1] == "qualify" => {
+            let isa = match a.opt("--isa") {
+                Some("x86_64") => spec::Isa::X86_64,
+                Some("aarch64") => spec::Isa::Aarch64,
+                _ => return fail("platform qualify", anyhow::anyhow!("USAGE: --isa x86_64 | aarch64"), 2),
+            };
+            match open_store(&a).and_then(|st| {
+                let q = qualify::qualify(isa)?;
+                st.put_host(&qualify::record_name(isa), &q)?;
+                Ok(q)
+            }) {
+                Ok(q) => {
+                    let ok = q["passed"] == json!(true);
+                    emit("platform qualify", true, q, vec![]);
+                    if ok { 0 } else { 1 }
+                }
+                Err(e) => fail("platform qualify", e, 4),
+            }
+        }
         ("platform", 2) if a.pos[1] == "show" => match open_store(&a) {
             Ok(st) => {
                 let quals: serde_json::Map<String, serde_json::Value> =
