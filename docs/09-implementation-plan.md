@@ -144,7 +144,9 @@ Mukozの実行ファイル(Linuxでは x86_64 ELF)と、その部品を、Mukoz 
 
 各 fixture は、元のアセンブリ、生成物、digest、使ったツールチェーンの版を `manifest.toml` に持つ。
 
-**fixture作成の制約(現環境):**
+**fixture作成(2026-10-05 の状態):** aarch64 は Rust の `aarch64-unknown-linux-gnu` ターゲット(`global_asm`)と `llvm-objcopy` で作る(`fixtures/aarch64/build.py`)。Mach-O は手で組み立てる(`fixtures/process/mkmacho.py`)。下は本書作成時の記録。
+
+**fixture作成の制約(本書作成時):**
 
 - x86_64 は `as` / `ld` で作れる(helloは1回作って実行できた)。
 - aarch64 のアセンブラ・逆アセンブラがない。`binutils-aarch64-linux-gnu` の導入(apt、要確認)か、Rust の `aarch64-unknown-linux-gnu` ターゲットの追加が必要。どちらもしていない。
@@ -208,6 +210,22 @@ write の失敗を無視する(full-success環境では反例にならない。�
 10. **生成ループの試験:** AIエージェントが、Mukozの CLI 出力だけを手がかりに(Mukozの内部ファイルや fixture の正解を読まずに)、変異 fixture を直して REJECT から ACCEPT_WITHIN_SCOPE まで到達できる。到達までの反復回数と、途中で回帰ケースが再発を捕まえた回数を記録する。
 
 「誤った受理ゼロ」は fixture 群の中での目標であり、未知のバイナリ全般についての保証ではない。
+
+**達成状況(2026-10-05、作業ホスト `linux-x86_64`、各1回):** `tools/tier1.py` が基準ごとに決める試験と run を回し、`target/tier1-report.json` に書く。
+
+| 基準 | 根拠 | 結果 |
+|---|---|---|
+| 1・2 | `tests/acceptance.rs`・`tests/coverage.rs`(両 ISA の fixture 表)・`tests/native.rs`・`tests/macho.rs`、shrink → replay | 通過 |
+| 3 | `tests/negative.rs`: artifact・同名の別ファイル・契約・Binding・Suite の変更で subject context が変わり、古い回帰集合は「当てはまらない」と数える | 通過 |
+| 4 | I1 系の試験、0件・時間切れ・停止しない native・壊れた証跡・上限超過・Capstone なしのビルドで採否が同じ | 通過 |
+| 5 | 同じ subject の再実行で採否・claim・反例の入力と観測が同じ(違うのは run / 反例の ID だけ)、反例の単独 replay が一括実行と同じ観測、回帰ケースの ID と seed が実行をまたいで同じ | 通過 |
+| 6 | native-process だけの run で memory・effects が NOT_EVALUATED | 通過 |
+| 7 | `tests/navigation.rs` | 通過 |
+| 8 | add64 の差分試験 4160 件一致・cpuid の食い違いを検出、適格試験(x86_64 45 試験 533 ベクトル、実CPUでも照合) | 通過 |
+| 9 | `selfcheck/run.py`: 段階1(cargo test)・段階2(静的 mukoz CLI を native-process で11行の表)・段階3(kernels 7 関数 × 2 ISA、x86_64 は native-routine と差分)。`independence = self`(前の版の判定器がない)なので段階2・3は HOLD `SELF_CHECK_ONLY` で、claim はすべて満たした | 通過(HOLD は設計どおり) |
+| 10 | `selfcheck/genloop/2026-10-05/`: 別エージェントが CLI 出力だけで todo の6欠陥を直し、8回の check で REJECT → ACCEPT。回帰ケースが再発を捕まえた回数は 0(再発が起きなかった) | 記録 |
+
+未確認・未達: 継続実行(CI)は未設定。段階2・3の `previous_version` での実行は、前の版の判定器が存在しないため未実施(`selfcheck/checkers.toml` は空)。生成ループ試験は1回・1課題だけ。
 
 ## 9.9 測定
 

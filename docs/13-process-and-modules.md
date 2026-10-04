@@ -11,7 +11,7 @@
 
 ### ターゲット
 
-`<isa>/<format>/<abi>/linux`。`format` は `raw`(先頭または `[entry] offset` が入口)か `elf`(静的な ET_EXEC。`kind = "elf_entry"`)。
+`<isa>/<format>/<abi>/linux`。`format` は `raw`(先頭または `[entry] offset` が入口)か `elf`(静的な ET_EXEC。`kind = "elf_entry"`)。ほかに `aarch64/macho/apple-arm64/darwin`(13.6)。
 
 | 項目 | 内容 |
 |---|---|
@@ -148,3 +148,27 @@ exports = { load = 0, save = 0x80 }
 
 1. ファイルが上限まで埋まっているときの ENOSPC を、プログラムが無視していた。対処として、契約に前提を足した。
 2. argv の式の数を超える argc を、Mukoz が黙って切り詰めていた。これは Mukoz の欠陥で、BINDING_MISMATCH に直した。
+
+## 13.6 native-process と Mach-O(2026-10-05)
+
+### native-process
+
+ホストの CPU と kernel で対象を実際に動かす Executor。x86-64 Linux ホストで x86-64 Linux の対象だけを動かす(他は `HOST_CANNOT_EXECUTE_TARGET`)。
+
+- 対象は封をした memfd から `execveat` で起動する。ファイルは一時ディレクトリに `[files]` で宣言したものだけを置き、そこへ chroot する。user・network・pid 名前空間、rlimit(CPU・メモリ・ファイルの大きさ・プロセス数・fd 数)を掛け、隔離に失敗したら起動しない(起動報告で隔離失敗と exec 失敗を区別する)。
+- raw の対象は最小の静的 ELF に包んで動かす。ELF は静的なもの(static-pie を含む)だけ。プログラムインタプリタを要求する ELF は `UNRESOLVED_DEPENDENCY`。
+- 観測するのは stdout・stderr・終了状態・宣言したファイルだけ。**`machine.memory.access` と `effects.no_forbidden` は観測できないので NOT_EVALUATED(`REQUIRED_CAPABILITY_UNAVAILABLE`)**。native-process だけの Suite はそのため HOLD で、ACCEPT には emulated との差分試験(`executors = ["emulated", "native-process"]`)を使う。SIGSEGV はメモリ違反として扱う。
+- Policy の試行区域で許可された対象だけを動かす(08章)。
+
+### Mach-O と `darwin-stdio/1`
+
+- MH_EXECUTE の64ビット Mach-O(arm64)。LC_SEGMENT_64・LC_MAIN(main として呼び、戻り値を終了コードにする)・LC_UNIXTHREAD を読む。dylib の読込み・chained fixups は `UNRESOLVED_DEPENDENCY`。`[entry] kind = "macho_entry"`。
+- システムコールは x16 に番号、`svc #0x80`。exit 1・read 3・write 4・close 6。失敗は carry flag を立てて errno を返す。x86-64 の Darwin は 0x2000000+n。
+- Linux ホストでは emulated だけで検査する。native は `HOST_CANNOT_EXECUTE_TARGET` で NOT_EVALUATED(HOLD)。ARM Mac 上の native 実行は未実装(P5)。
+- fixture は手で組み立てた(`fixtures/process/mkmacho.py`)。Apple のツールチェーンで作ったファイル・署名済みのファイルでは確かめていない `[U]`。
+
+| 何を | 結果(各1回、`tests/native.rs`・`tests/macho.rs` に固定) |
+|---|---|
+| x86-64 ELF hello・等価な hello | emulated + native-process の差分試験で ACCEPT。出力長の変異は両方の Suite で `proc.hello/greets` の REJECT |
+| todo(ファイル・argv・終了コード) | emulated と native-process が一致 |
+| Mach-O hello(arm64) | emulated で ACCEPT。変異(出力長・x18 の使用)は REJECT。native は HOST_CANNOT_EXECUTE_TARGET で HOLD。dylib 付きは UNRESOLVED_DEPENDENCY、壊れた header・command は FORMAT_MISMATCH |

@@ -24,7 +24,8 @@ AIエージェントが、ソースなしでバイナリを生成・修正し、
 | 見る所 | 内容 |
 |---|---|
 | `data.assessment.reasons` | 破れた性質の一覧(`VIOLATED: <性質ID>`) |
-| `data.findings[]` | 性質ごとに最大3件の反例。入力(`inputs`)、停止理由(`stop`)、観測値、直前16命令(オフセットとバイト列)、`detail` |
+| `data.findings[]` | 破れた性質ごとに1件(その性質の最初の反例)。入力(`inputs`)、停止理由(`stop`)、観測値、直前16命令(オフセットとバイト列)、`detail`。ほかの反例は claim の `counterexamples` の ID から `mukoz show` で辿る |
+| `case_id` が `reg-…` | 前の run の反例から作った回帰ケース。ID は実行をまたいで同じなので、同じケースを追える |
 | `detail.why_false` | **まずここを読む。**式が偽になった理由: `forall` の最初の反例の添字(`witness`)、偽の比較の両辺の値(観測値と期待値)、添字アクセスの添字の値。`and` は偽の側だけを辿る |
 | `recent_instructions` | 停止した時点の直前16命令。メモリ違反・不正命令ではその場所を指す。**結果の誤り(ensures)では戻る直前の命令しか写らない**ので、`why_false` と入力から場所を絞る |
 | `mukoz show <反例ID> --store .mukoz` | 反例の全情報 |
@@ -53,6 +54,8 @@ HOLD は「合格とも不合格とも言えない」。直すべき所は `reas
 | `INCONCLUSIVE: ... BUDGET_EXHAUSTED` | 命令数の上限に達した(停止しない可能性) | ループの終了条件。または Suite の `instructions_per_case` |
 | `INCONCLUSIVE: ... UNSUPPORTED_DURING_RUN` / `ENGINE_ERROR` / `TIMEOUT` | 実行器が扱えない命令(未定義命令を含む)・実行器の失敗・時間切れ | 命令の符号化と選択を見直す |
 | `VACUOUS_SCOPE` | `requires` を満たすケースが0件 | Suite の生成器(12.4) |
+| `NOT_EVALUATED: ... NATIVE_NOT_PERMITTED` | native の Executor を Policy が許可していない | 試行区域(`policy.toml`)。emulated に自動では切り替わらない |
+| `ENGINE_NOT_QUALIFIED` | このホストのエミュレータが適格試験に通っていない | `mukoz platform qualify --isa …` の記録を見る |
 | `LOW_ADMITTED_CASES` | `requires` がほとんどのケースを捨てた | Suite の生成器(12.4) |
 
 ## 12.4 契約・Suite を書くとき

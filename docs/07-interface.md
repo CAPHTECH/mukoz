@@ -29,7 +29,7 @@
 
 `check` は `plan` と `run` と `assess` の合成であり、別の判定ロジックを持たない。
 
-**実装済みコマンド:** `check`(`--artifact` `--module <name>=<file>` `--fail-fast` `--gate` `--store`。`--module` はリンクファイルのモジュールを差し替える、13章)・`show`・`replay`・`inspect`・`regressions list` / `prune`・`platform show`・`expr check`。`plan` / `run` / `assess` / `shrink` / `schema` / `platform probe` / `platform qualify` と `show` の `--page` / `--disasm` は未実装。引数なしで `mukoz` を実行すると使い方を表示する。
+**実装済みコマンド(2026-10-05):** `check`(`--artifact` `--module <name>=<file>` `--fail-fast` `--gate` `--store` `--policy`。`--module` はリンクファイルのモジュールを差し替える、13章。`--policy` は試行区域の Policy、既定は store の親ディレクトリの `policy.toml`)・`show`(`--page <n>`: 長い一覧を32件ずつ、`_pages` に次のコマンド。`--disasm`: 直前命令を Capstone で逆アセンブル、Capstone なしのビルドでは表示だけが変わる)・`shrink`(`--budget`、既定400回の実行)・`replay`・`inspect`(ELF・Mach-O の読込み結果を含む)・`regressions list` / `prune`・`platform probe` / `show` / `qualify --isa <x86_64|aarch64>`・`expr check`。`plan` / `run` / `assess` / `schema` は未実装。引数なしで `mukoz` を実行すると使い方を表示する。
 
 **オプション:**
 

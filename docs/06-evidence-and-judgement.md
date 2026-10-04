@@ -129,6 +129,7 @@ else:
 | `self` | 判定器と対象が同じソース・同じ版から作られている |
 
 - `self` の claim だけで ACCEPT_WITHIN_SCOPE を出すことは、Policyで明示した場合に限る。既定では、`self` だけの必須claimは HOLD にする。
+- 実装(2026-10-05): `assessment.independence` に `value`・`basis`・`checker_sha256` を出す。Suite に `[selfcheck] checkers = "…/checkers.toml"`(schema `mukoz.checkers/1`、`previous = [{ version, sha256 }]`)があるときだけ `self` / `previous_version` を判定し、走っている mukoz の digest が列挙されていれば `previous_version`。`self` で ACCEPT になるはずの run は HOLD `SELF_CHECK_ONLY`。Policy の `allow_self_accept = true` で明示的に許す。
 - 式評価器自体を検査する場合、期待値をその評価器で計算すると循環になる。期待値は、実CPUの命令結果(native-routine / emulated)、手で確定した値の表、別実装のどれかから取る。
 
 ## 6.10 反例・縮小・再実行

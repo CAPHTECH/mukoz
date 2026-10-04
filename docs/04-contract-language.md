@@ -424,7 +424,10 @@ AIが生成と検査を繰り返すとき、前に見つかった失敗が再発
 | 項目 | 0.1 の実装 |
 |---|---|
 | Suite の `contract` / `binding` | **ファイルパス**(Suite からの相対)。ID 参照は未実装 |
-| `executors` | `["emulated"]` のみ |
+| `executors` | `["emulated"]`(既定)・`["native-routine"]`・`["native-process"]`・`["emulated", "native-routine"]`・`["emulated", "native-process"]`(差分試験、claim `differential.emulated_vs_<native>`)。native は Policy の許可がなければ NOT_EVALUATED(`NATIVE_NOT_PERMITTED`)で HOLD。Executor 間で自動の代替はしない |
+| `[entry] kind` | `raw_offset`・`elf_entry`(ELF 実行ファイル)・`macho_entry`(Mach-O、13章)・`symbol`(リンクファイル)・`object_symbol`(ELF 再配置可能オブジェクト ET_REL の関数記号をルーチンとして。`symbol = "名前"`。target は `<isa>/elf/<abi>/none`。関数の中に再配置があれば `UNRESOLVED_DEPENDENCY`: Mukoz はリンクしない) |
+| `[selfcheck] checkers` | 対象が Mukoz 自身のとき、前の版の判定器を列挙したファイル(06章 6.9)。指定すると `assessment.independence` が `self` / `previous_version` になる。指定しなければ `independent` |
+| 回帰ケース | ID は `reg-<保存digest>` で実行をまたいで同じ。保存した filler seed をそのまま使う(元の反例と同じ実行) |
 | `[generate]` | `seed`・`boundary`(`product` / `none`)・`random_cases` |
 | `[generate.vars.<名前>]` | `values`: 追加の値(bv は 10進/0x16進の文字列、bytes は16進文字列。`hex"..."` 形式ではない)。`len`: bytes の長さの式(前の変数を参照可。例 `len(input.src) + len(input.src)`)。`max`: bv の上限の式(含む。前の変数を参照可)。`bytes`: bytes の値域 `nonzero` / `ascii`。`pieces`: bytes を重み付きの16進断片(`"c280:20"`)の連結で作る。`expr`: 値を前の変数の式で直接与える(派生入力。例: 整形済みのファイル内容を単純な変数から組み立てる。ほかの項目とは併用不可、`max_len` を超えたら `PLAN_ERROR`)。型に合わない項目はエラー |
 | 境界値 | bv は `max` があれば {0, 1, max/2, max−1, max}、なければ 4.7 の既定。bytes は `len` があればその長さ1つ、なければ {0, 1, max_len/2, max_len}。これに `values` を足す。直積が `max_cases/2` を超えたら「1変数ずつ境界値・他はランダム」に切り替え、`plan_stats.boundary_mode = "one_at_a_time"` と `limitations` に出す |
