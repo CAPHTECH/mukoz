@@ -168,3 +168,94 @@ fn zone_rejects_symlinks_and_files_outside_and_unlisted_targets() {
     let v = check(NATIVE, zone.join("add64.bin").to_str().unwrap(), Some(&pol), None, &[]);
     assert_eq!(v["data"]["assessment"]["scope"]["platform"]["native-routine"]["permitted_by"], "zone:t");
 }
+
+// ---------------------------------------------------------------- native-process
+
+fn process_policy() -> PathBuf {
+    let d = tempdir("ppolicy");
+    let p = d.join("policy.toml");
+    std::fs::write(
+        &p,
+        format!(
+            "[[native_trial_zones]]\nid = \"p\"\nartifact_dir = \"{}\"\nexecutors = [\"native-process\"]\ntargets = [\"x86_64/elf/sysv-x86_64/linux\", \"x86_64/raw/sysv-x86_64/linux\", \"aarch64/elf/aapcs64/linux\"]\nrequire_isolation = {ISOLATION}\nmax_wall_ms_per_case = 2000\n",
+            root().join("fixtures").display()
+        ),
+    )
+    .unwrap();
+    p
+}
+
+#[test]
+fn hello_elf_is_accepted_by_emulated_and_native_process_together() {
+    let pol = process_policy();
+    for art in ["hello_x86.elf", "hello_x86_eq.elf"] {
+        let v = check("examples/hello/suite.x86_64.elf.diff.toml", &format!("fixtures/process/{art}"), Some(&pol), None, &[]);
+        assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{art}: {:#}", v["data"]["assessment"]);
+        assert_eq!(claim(&v, "differential.emulated_vs_native-process")["evaluation"], "SATISFIED_IN_SCOPE");
+    }
+    for suite in ["examples/hello/suite.x86_64.elf.diff.toml", "examples/hello/suite.x86_64.elf.native.toml"] {
+        let v = check(suite, "fixtures/process/hello_x86_mut_len.elf", Some(&pol), None, &[]);
+        assert_eq!(admission(&v), "REJECT", "{suite}");
+        assert_eq!(claim(&v, "proc.hello/greets")["evaluation"], "VIOLATED");
+    }
+    let v = check("examples/hello/suite.x86_64.raw.diff.toml", "fixtures/process/hello_x86.bin", Some(&pol), None, &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "raw image through the wrapped ELF");
+}
+
+#[test]
+fn native_process_alone_claims_no_memory_or_effect_guarantee() {
+    let v = check("examples/hello/suite.x86_64.elf.native.toml", "fixtures/process/hello_x86.elf", Some(&process_policy()), None, &[]);
+    assert_eq!(admission(&v), "HOLD");
+    for p in ["machine.memory.access", "effects.no_forbidden"] {
+        let c = claim(&v, p);
+        assert_eq!(c["evaluation"], "NOT_EVALUATED", "{p}");
+        assert!(c["not_evaluated_reasons"]["REQUIRED_CAPABILITY_UNAVAILABLE"].as_u64().unwrap() > 0);
+    }
+    for p in ["machine.exited", "effects.output_within_limit", "proc.hello/greets", "proc.hello/exit_zero"] {
+        assert_eq!(claim(&v, p)["evaluation"], "SATISFIED_IN_SCOPE", "{p}");
+    }
+    let reasons = v["data"]["assessment"]["reasons"].as_array().unwrap();
+    assert_eq!(reasons.len(), 2, "{reasons:?}");
+}
+
+#[test]
+fn todo_files_argv_and_exit_status_agree_natively() {
+    let pol = process_policy();
+    let v = check("examples/todo/suite.x86_64.elf.diff.toml", "fixtures/process/todo_x86.elf", Some(&pol), None, &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    for m in ["todo_x86_mut_nonl.elf", "todo_x86_mut_noappend.elf"] {
+        let v = check("examples/todo/suite.x86_64.elf.native.toml", &format!("fixtures/process/{m}"), Some(&pol), None, &[]);
+        assert_eq!(admission(&v), "REJECT", "{m}");
+        assert_eq!(claim(&v, "proc.todo/add_appends_line")["evaluation"], "VIOLATED", "{m}");
+    }
+    // fstat is outside the effect model: the emulated side holds, and the difference is not
+    // reported as a backend divergence.
+    let v = check("examples/todo/suite.x86_64.elf.diff.toml", "fixtures/process/todo_x86_mut_stat.elf", Some(&pol), None, &[]);
+    assert_eq!(admission(&v), "HOLD");
+    let d = claim(&v, "differential.emulated_vs_native-process");
+    assert_eq!(d["evaluation"], "NOT_EVALUATED");
+    assert!(d["not_evaluated_reasons"]["EMULATED_UNSUPPORTED"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn a_foreign_isa_is_never_run_natively() {
+    let v = check("examples/hello/suite.aarch64.elf.toml", "fixtures/process/hello_a64.elf", Some(&process_policy()), None, &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "emulated alone");
+    let st = tempdir("a64");
+    let suite = st.join("suite.toml");
+    let text = std::fs::read_to_string(root().join("examples/hello/suite.aarch64.elf.toml")).unwrap();
+    let text = text.replace("contract = \"contract.toml\"", &format!("contract = \"{}\"", root().join("examples/hello/contract.toml").display()));
+    let text = text.replace("binding = \"binding.aarch64.elf.toml\"", &format!("binding = \"{}\"\nexecutors = [\"emulated\", \"native-process\"]", root().join("examples/hello/binding.aarch64.elf.toml").display()));
+    std::fs::write(&suite, text).unwrap();
+    let v = check(suite.to_str().unwrap(), "fixtures/process/hello_a64.elf", Some(&process_policy()), None, &[]);
+    assert_eq!(admission(&v), "HOLD");
+    let d = claim(&v, "differential.emulated_vs_native-process");
+    assert!(d["not_evaluated_reasons"]["HOST_CANNOT_EXECUTE_TARGET"].as_u64().unwrap() > 0, "{d}");
+}
+
+#[test]
+fn a_dynamically_linked_elf_is_an_unresolved_dependency_not_a_violation() {
+    let v = check("examples/hello/suite.x86_64.elf.diff.toml", "fixtures/process/hello_dyn.elf", Some(&process_policy()), None, &[]);
+    assert_eq!(v["ok"], false);
+    assert_eq!(v["errors"][0]["code"], "UNRESOLVED_DEPENDENCY");
+}

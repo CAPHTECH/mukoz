@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "proc.hello.x86_64.elf"
+contract = "contract.toml"
+binding = "binding.x86_64.elf.toml"
+
+[generate]
+seed = "hello"
+random_cases = 4
+
+[artifact]
+path = "../../fixtures/process/hello_x86.elf"

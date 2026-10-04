@@ -138,9 +138,9 @@ impl Image {
 
     /// Static, non-PIE ELF64 little-endian executable.
     pub fn elf(bytes: &[u8], isa: Isa, stack_lo: u64) -> Result<Image> {
-        let u16_at = |o: usize| -> Result<u64> { Ok(u16::from_le_bytes(bytes.get(o..o + 2).ok_or_else(|| anyhow!("ELF: truncated"))?.try_into()?) as u64) };
-        let u32_at = |o: usize| -> Result<u64> { Ok(u32::from_le_bytes(bytes.get(o..o + 4).ok_or_else(|| anyhow!("ELF: truncated"))?.try_into()?) as u64) };
-        let u64_at = |o: usize| -> Result<u64> { Ok(u64::from_le_bytes(bytes.get(o..o + 8).ok_or_else(|| anyhow!("ELF: truncated"))?.try_into()?)) };
+        let u16_at = |o: usize| -> Result<u64> { Ok(u16::from_le_bytes(bytes.get(o..o + 2).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF truncated"))?.try_into()?) as u64) };
+        let u32_at = |o: usize| -> Result<u64> { Ok(u32::from_le_bytes(bytes.get(o..o + 4).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF truncated"))?.try_into()?) as u64) };
+        let u64_at = |o: usize| -> Result<u64> { Ok(u64::from_le_bytes(bytes.get(o..o + 8).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF truncated"))?.try_into()?)) };
         if bytes.get(..4) != Some(b"\x7fELF") {
             bail!("FORMAT_MISMATCH: not an ELF file");
         }
@@ -155,19 +155,31 @@ impl Image {
         if machine != want {
             bail!("FORMAT_MISMATCH: ELF e_machine {machine} does not match the target ISA");
         }
+        let entry = u64_at(24)?;
+        let phoff = u64_at(32)? as usize;
+        let phentsize = u16_at(54)? as usize;
+        let phnum = u16_at(56)? as usize;
+        if phentsize < 56 {
+            bail!("FORMAT_MISMATCH: ELF e_phentsize {phentsize} is smaller than a 64-bit program header");
+        }
+        let ph = |i: usize| -> Result<usize> {
+            i.checked_mul(phentsize).and_then(|x| x.checked_add(phoff)).filter(|o| o.checked_add(56).is_some_and(|e| e <= bytes.len())).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF program header {i} lies outside the file"))
+        };
+        // A dependency on a dynamic loader is reported first: it is not a defect of the program.
+        for i in 0..phnum {
+            if matches!(u32_at(ph(i)?)?, 2 | 3) {
+                bail!("UNRESOLVED_DEPENDENCY: dynamic linking (PT_INTERP / PT_DYNAMIC) is not modeled; build a static executable");
+            }
+        }
         match u16_at(16)? {
             2 => {}
             3 => bail!("UNSUPPORTED_FEATURE: position-independent (ET_DYN) executables; link with -no-pie / -static"),
             t => bail!("UNSUPPORTED_FEATURE: ELF type {t} (only ET_EXEC)"),
         }
-        let entry = u64_at(24)?;
-        let phoff = u64_at(32)? as usize;
-        let phentsize = u16_at(54)? as usize;
-        let phnum = u16_at(56)? as usize;
         let mut segments = Vec::new();
         let mut code_ranges = Vec::new();
         for i in 0..phnum {
-            let o = phoff + i * phentsize;
+            let o = ph(i)?;
             let ty = u32_at(o)?;
             match ty {
                 1 => {}
@@ -183,8 +195,11 @@ impl Image {
             if memsz == 0 {
                 continue;
             }
-            let data = bytes.get(off..off + filesz).ok_or_else(|| anyhow!("ELF: segment {i} lies outside the file"))?.to_vec();
-            let end = vaddr.checked_add(memsz).ok_or_else(|| anyhow!("ELF: segment {i} wraps"))?;
+            let data = off.checked_add(filesz).and_then(|e| bytes.get(off..e)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF segment {i} lies outside the file"))?.to_vec();
+            if filesz as u64 > memsz {
+                bail!("FORMAT_MISMATCH: ELF segment {i} has p_filesz > p_memsz");
+            }
+            let end = vaddr.checked_add(memsz).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF segment {i} wraps the address space"))?;
             if vaddr < 0x1_0000 || end > RESERVED_LO.min(stack_lo) || (vaddr < IMPORT_TABLE + 0x1000 && end > IMPORT_TABLE) {
                 bail!("UNSUPPORTED_FEATURE: ELF segment {i} at [0x{vaddr:x}, 0x{end:x}) overlaps memory Mukoz reserves (below 0x10000, the import table, or 0x{RESERVED_LO:x} and up)");
             }

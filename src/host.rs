@@ -53,6 +53,8 @@ pub enum Exit {
     Code(i32),
     Signal(i32),
     TimedOut,
+    /// Stopped on the parent's request (`run_tick`).
+    Killed,
 }
 
 fn write_file(path: &str, s: &str) -> bool {
@@ -137,6 +139,12 @@ fn enter(sb: &Sandbox, keep: &[i32]) -> bool {
 /// `keep` lists fds the payload needs (e.g. a result pipe). Exit code 125 means the sandbox
 /// could not be entered (the payload did not run).
 pub fn run<F: FnOnce() -> i32>(sb: &Sandbox, wall_ms: u64, keep: &[i32], payload: F) -> Exit {
+    run_tick(sb, wall_ms, keep, payload, &mut || false)
+}
+
+/// `run` with `tick` called in the parent while it waits (e.g. to move pipe data); when `tick`
+/// returns true the child's process group is killed and the result is `Exit::Killed`.
+pub fn run_tick<F: FnOnce() -> i32>(sb: &Sandbox, wall_ms: u64, keep: &[i32], payload: F, tick: &mut dyn FnMut() -> bool) -> Exit {
     let mut st = [0i32; 2];
     unsafe {
         if libc::pipe2(st.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
@@ -199,10 +207,19 @@ pub fn run<F: FnOnce() -> i32>(sb: &Sandbox, wall_ms: u64, keep: &[i32], payload
     unsafe { libc::close(st[1]) };
     let deadline = Instant::now() + Duration::from_millis(wall_ms);
     let mut status = 0;
+    let mut killed = false;
     let timed_out = loop {
         let r = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
         if r == pid {
             break false;
+        }
+        if !killed && tick() {
+            killed = true;
+            unsafe {
+                libc::kill(-pid, libc::SIGKILL);
+                libc::kill(pid, libc::SIGKILL);
+            }
+            continue;
         }
         if Instant::now() >= deadline {
             unsafe {
@@ -223,6 +240,9 @@ pub fn run<F: FnOnce() -> i32>(sb: &Sandbox, wall_ms: u64, keep: &[i32], payload
     unsafe { libc::close(st[0]) };
     if timed_out {
         return Exit::TimedOut;
+    }
+    if killed {
+        return Exit::Killed;
     }
     if got == 4 {
         status = i32::from_le_bytes(inner);

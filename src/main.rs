@@ -6,6 +6,7 @@ mod expr;
 mod host;
 mod judge;
 mod native;
+mod nproc;
 mod plan;
 mod policy;
 mod qualify;

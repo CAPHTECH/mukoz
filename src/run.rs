@@ -188,7 +188,7 @@ fn platform_for(l: &Loaded, store: &Store, policy_path: Option<&Path>) -> Result
     p.policy = policy.as_ref().map(|x| (x.path.display().to_string(), x.digest.clone()));
     let capable = match n.as_str() {
         "native-routine" => crate::native::host_can_execute(&l.binding),
-        _ => Err("REQUIRED_CAPABILITY_UNAVAILABLE: native-process is not implemented yet".to_string()),
+        _ => crate::nproc::host_can_execute(&l.binding),
     };
     p.native_state = Some(match capable {
         Err(e) => Err(e),
@@ -218,6 +218,21 @@ fn native_routine_claims(l: &Loaded, case: &Case, obs: &Observation) -> Vec<Case
             c.eval = Eval::NotEvaluated;
             c.reason = Some("REQUIRED_CAPABILITY_UNAVAILABLE".into());
             c.detail = Some(json!({ "why": "native-routine detects out-of-bounds accesses only at page granularity" }));
+        }
+    }
+    v
+}
+
+/// Claims from a native-process observation: registers, memory accesses and system calls are
+/// not observed, so the memory and effect claims stay NOT_EVALUATED unless the process crashed
+/// (a crash is a violation; a clean exit is no guarantee). docs/09 9.8 item 6.
+fn native_process_claims(l: &Loaded, case: &Case, obs: &Observation) -> Vec<CaseClaim> {
+    let mut v = judge::judge_case(&l.contract, &l.binding, case, obs);
+    for c in v.iter_mut() {
+        if (c.property == "machine.memory.access" || c.property == "effects.no_forbidden") && c.eval == Eval::SatisfiedInScope {
+            c.eval = Eval::NotEvaluated;
+            c.reason = Some("REQUIRED_CAPABILITY_UNAVAILABLE".into());
+            c.detail = Some(json!({ "why": "native-process observes only stdout/stderr, the exit status and the declared files" }));
         }
     }
     v
@@ -265,8 +280,39 @@ fn compare(l: &Loaded, native: &str, e: &Observation, n: &Observation) -> CaseCl
     if ce == "fault" && cn == "returned" {
         return mk(Eval::NotEvaluated, Some("BELOW_NATIVE_PAGE_GRANULARITY"), Some(both()));
     }
+    if ce == "unsupported" {
+        return mk(Eval::NotEvaluated, Some("EMULATED_UNSUPPORTED"), Some(both()));
+    }
+    if native == "native-process" && matches!(ce, "forbidden_effect" | "fault") && cn == "exited" {
+        // The effect model stopped a call the real kernel performs, or the byte-granular monitor
+        // stopped an access the real process survives: outside what native-process observes.
+        return mk(Eval::NotEvaluated, Some("OUTSIDE_NATIVE_PROCESS_OBSERVATION"), Some(both()));
+    }
     if ce != cn {
         return mk(Eval::Inconclusive, Some("BACKEND_DIVERGENCE"), Some(both()));
+    }
+    if ce == "exited" || ce == "output_limit" {
+        let mut diffs = Vec::new();
+        if let (Some(a), Some(b)) = (&e.process, &n.process) {
+            let show = |x: &[u8]| json!({ "text": String::from_utf8_lossy(x), "hex": expr::hex(x) });
+            if a.exit_status != b.exit_status {
+                diffs.push(json!({ "exit_status": { "emulated": a.exit_status, native: b.exit_status } }));
+            }
+            if ce == "exited" {
+                for (k, x, y) in [("stdout", &a.stdout, &b.stdout), ("stderr", &a.stderr, &b.stderr)] {
+                    if x != y {
+                        diffs.push(json!({ k: { "emulated": show(x), native: show(y) } }));
+                    }
+                }
+                for (name, fa) in &a.files {
+                    let fb = b.files.get(name);
+                    if Some(fa) != fb {
+                        diffs.push(json!({ "file": name, "emulated": { "exists": fa.0, "data": show(&fa.1) }, native: fb.map(|f| json!({ "exists": f.0, "data": show(&f.1) })) }));
+                    }
+                }
+            }
+        }
+        return if diffs.is_empty() { mk(Eval::SatisfiedInScope, None, None) } else { mk(Eval::Inconclusive, Some("BACKEND_DIVERGENCE"), Some(json!({ "differences": diffs }))) };
     }
     if ce != "returned" {
         return mk(Eval::SatisfiedInScope, None, None);
@@ -340,6 +386,8 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     let mut observations: Vec<Observation> = Vec::new();
     let mut divergent: Vec<(usize, Observation)> = Vec::new();
     let mut native_timeouts = 0usize;
+    let native_process = platform.native.as_deref() == Some("native-process");
+    let exe = if native_process { crate::nproc::executable(&l.binding, &l.image, &l.artifact) } else { Vec::new() };
     let mut skipped = 0;
     let total = generated.cases.len();
     for (i, case) in generated.cases.iter().enumerate() {
@@ -357,17 +405,24 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
             None
         };
         let obs_n = if platform.native_ok() && native_skip.is_none() {
-            let r = crate::native::run(&l.image, &l.binding, case, l.suite.vary_placement, native_wall);
-            platform.applied_isolation = r.applied_isolation;
-            if matches!(r.obs.stop, emu::Stop::Timeout { .. }) {
+            let (obs, applied) = if native_process {
+                let r = crate::nproc::run(&exe, &l.contract, &l.binding, case, native_wall);
+                (r.obs, r.applied_isolation)
+            } else {
+                let r = crate::native::run(&l.image, &l.binding, case, l.suite.vary_placement, native_wall);
+                (r.obs, r.applied_isolation)
+            };
+            platform.applied_isolation = applied;
+            if matches!(obs.stop, emu::Stop::Timeout { .. }) {
                 native_timeouts += 1;
             }
-            Some(r.obs)
+            Some(obs)
         } else {
             None
         };
         let mut claims = match (&obs_e, &obs_n) {
             (Some(e), _) => judge::judge_case(&l.contract, &l.binding, case, e),
+            (None, Some(n)) if native_process => native_process_claims(&l, case, n),
             (None, Some(n)) => native_routine_claims(&l, case, n),
             (None, None) => {
                 let why = native_skip.map(str::to_string).or_else(|| platform.native_state.as_ref().and_then(|r| r.as_ref().err()).cloned()).unwrap_or_default();
@@ -545,6 +600,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
         (None, _) => limitations.push("emulated_only_not_native_execution".into()),
         (Some(n), false) => limitations.push(format!("{n}_not_run")),
         (Some(n), true) if n == "native-routine" => limitations.push("native_routine_memory_checks_page_granular_only".into()),
+        (Some(_), true) => limitations.push("native_process_observes_only_streams_exit_status_and_declared_files".into()),
         _ => {}
     }
     if native_timeouts >= NATIVE_TIMEOUT_LIMIT {

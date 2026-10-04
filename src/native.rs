@@ -385,7 +385,7 @@ fn run_x86(image: &Image, binding: &Binding, _case: &Case, rs: crate::emu::Routi
     let loc = |a: u64| image.locate(a);
     let status = shm.word(H_STATUS);
     let stop = match exit {
-        Exit::TimedOut => Stop::Timeout { instructions: 0 },
+        Exit::TimedOut | Exit::Killed => Stop::Timeout { instructions: 0 },
         Exit::Signal(s) if s == libc::SIGSYS => Stop::ForbiddenEffect { pc_offset: "unknown (native)".into(), effect: "system call (killed by the seccomp filter)".into() },
         Exit::Signal(s) if s == libc::SIGXCPU || s == libc::SIGKILL => Stop::Timeout { instructions: 0 },
         Exit::Signal(s) => Stop::EngineError { error: format!("native child killed by signal {s}") },

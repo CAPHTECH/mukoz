@@ -1,0 +1,17 @@
+schema = "mukoz.binding/1"
+id = "proc.hello@x86_64.elf"
+contract = "proc.hello"
+target = "x86_64/elf/sysv-x86_64/linux"
+
+[entry]
+kind = "elf_entry"
+
+[process]
+argv0 = "hello"
+
+[results]
+code = "exit_status"
+out = "stdout"
+
+[completion]
+kind = "exit"

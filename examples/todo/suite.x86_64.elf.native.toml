@@ -1,0 +1,27 @@
+schema = "mukoz.suite/1"
+id = "proc.todo.x86_64.elf.native"
+contract = "contract.toml"
+binding = "binding.x86_64.elf.toml"
+executors = ["native-process"]
+
+[generate]
+seed = "todo"
+random_cases = 256
+
+[generate.vars.op]
+max = "bv8(3)"
+
+[generate.vars.nargs]
+max = "bv64(2)"
+
+[generate.vars.text]
+bytes = "ascii"
+
+[generate.vars.db]
+pieces = ["6d696c6b0a:3", "6567677320616e64206272656164:2", "0a:1", "782079207a0a:2"]
+
+[limits]
+instructions_per_case = 200000
+
+[artifact]
+path = "../../fixtures/process/todo_x86.elf"
