@@ -1,0 +1,22 @@
+schema = "mukoz.binding/1"
+id = "str.len@x86_64-sysv"
+contract = "str.len"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "addr(s)"
+
+[results]
+value = "rax"
+
+[regions.s]
+size = "len(input.s) + bv64(1)"
+init = "concat(input.s, hex\"00\")"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

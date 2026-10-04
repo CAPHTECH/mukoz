@@ -1,0 +1,24 @@
+schema = "mukoz.binding/1"
+id = "counter.checked_inc@x86_64-sysv"
+contract = "counter.checked_inc"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "addr(counter)"
+rsi = "input.n"
+
+[results]
+status = "rax"
+
+[regions.counter]
+size = "bv64(8)"
+init = "before.count"
+access = "rw"
+observe_as = "after.count"
+
+[completion]
+kind = "return_to_sentinel"

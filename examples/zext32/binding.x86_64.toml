@@ -1,0 +1,17 @@
+schema = "mukoz.binding/1"
+id = "arith.zext32@x86_64-sysv"
+contract = "arith.zext32"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "input.a"
+
+[results]
+value = "rax"
+
+[completion]
+kind = "return_to_sentinel"

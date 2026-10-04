@@ -1,0 +1,23 @@
+schema = "mukoz.contract/1"
+id = "str.len"
+boundary = "routine"
+
+[inputs]
+s = { type = "bytes", max_len = 256 }
+
+[results]
+value = "bv64"
+
+[[requires]]
+id = "no_nul_inside"
+expr = "forall i in bv64(0)..len(input.s): input.s[i] != bv8(0)"
+
+[[ensures]]
+id = "length"
+expr = "result.value == len(input.s)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

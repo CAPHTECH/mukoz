@@ -275,6 +275,8 @@ impl Executor<'_> {
         let cx = EvalCtx { vars: &case.values, region_addrs: &addrs };
         for (reg, e) in &self.binding.arguments {
             let v = match expr::eval(e, &cx).map_err(|m| format!("argument {reg}: {m}"))? {
+                // Narrow arguments: the ABI leaves upper bits unspecified, so fill them.
+                Value::Bv(w, x) if w < 64 => x | (filler.next() & !expr::mask(w)),
                 Value::Bv(_, x) => x,
                 Value::Bool(b) => b as u64,
                 Value::Bytes(_) => return Err(format!("argument {reg} evaluated to bytes")),

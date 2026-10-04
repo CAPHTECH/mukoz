@@ -1,0 +1,19 @@
+schema = "mukoz.contract/1"
+id = "arith.zext32"
+boundary = "routine"
+
+[inputs]
+a = "bv32"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "zero_extended"
+expr = "result.value == zext(input.a, 64)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

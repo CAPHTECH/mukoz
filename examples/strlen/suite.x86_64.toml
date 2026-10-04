@@ -1,0 +1,17 @@
+schema = "mukoz.suite/1"
+id = "str.len.x86_64"
+contract = "contract.toml"
+binding = "binding.x86_64.toml"
+
+[artifact]
+path = "../../fixtures/x86_64/strlen.bin"
+
+[generate]
+seed = "2"
+random_cases = 512
+
+[generate.vars.s]
+bytes = "nonzero"
+
+[limits]
+instructions_per_case = 100000

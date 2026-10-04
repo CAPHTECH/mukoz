@@ -1,0 +1,20 @@
+schema = "mukoz.contract/1"
+id = "arith.add32"
+boundary = "routine"
+
+[inputs]
+a = "bv32"
+b = "bv32"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "zero_extended_sum"
+expr = "result.value == zext(input.a + input.b, 64)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

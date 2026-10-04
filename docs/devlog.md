@@ -11,3 +11,5 @@
 | 2026-10-04 | 2・3 | 単一crate `mukoz` で Core(式・契約・計画・判定・Store)と emulated executor を実装。docs 9.2 の複数crate構成と worker プロセス分離は未実施(探索中の逸脱。限界として出力の `limitations` に `engine_runs_in_process` を出す)。Suite の `contract`/`binding` は ID ではなくパス |
 | 2026-10-04 | 3 | Unicorn は不正命令でも code hook を呼び、命令長に `0xf1f1f1f1` を渡す。範囲外移動と誤判定していた → 不正命令として扱う(ud2 fixture で発見) |
 | 2026-10-04 | 3 | 受入試験 4本(fixture 11個): 正しい4種 ACCEPT、変異5種が予告どおりの性質で REJECT、無限ループ・ud2 が HOLD、fail-fast。単体12本。すべて通過(1回)。回帰ケースは次回の先頭で再発を検出(1回) |
+| 2026-10-04 | 3b | 領域・ポインタ・状態の3課題(copy、strlen、checked_inc)と AArch64 add64 を追加。正しい実装 ACCEPT、変異4種が予告どおり REJECT(1回) |
+| 2026-10-04 | 3b | 64bit未満の引数はレジスタ上位ビットに乱数を入れるよう変更(SysVで不定)。`mov rax,rdi` 変異で検出、乱数化を外す故障注入で試験が落ちることを確認(1回) |

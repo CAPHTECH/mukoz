@@ -90,3 +90,51 @@ fn fail_fast_rejects_without_accepting_skipped_cases() {
     assert_eq!(admission(&v), "REJECT");
     assert!(v["data"]["assessment"]["scope"]["cases_skipped"].as_u64().unwrap() > 0);
 }
+
+#[test]
+fn memory_tasks_correct_are_accepted() {
+    for (suite, art) in [
+        ("examples/copy/suite.x86_64.toml", "copy"),
+        ("examples/strlen/suite.x86_64.toml", "strlen"),
+        ("examples/checked_inc/suite.x86_64.toml", "checked_inc"),
+    ] {
+        let v = check(suite, &fx(art), &[]);
+        assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{art}: {:#}", v["data"]["assessment"]);
+    }
+}
+
+#[test]
+fn memory_task_mutations_are_rejected() {
+    let expect = [
+        ("examples/copy/suite.x86_64.toml", "copy_mut_offbyone", "machine.memory.access"),
+        ("examples/copy/suite.x86_64.toml", "copy_mut_half", "mem.copy/copied"),
+        ("examples/strlen/suite.x86_64.toml", "strlen_mut_count_nul", "str.len/length"),
+        ("examples/checked_inc/suite.x86_64.toml", "checked_inc_mut_nocheck", "counter.checked_inc/ok_iff_no_overflow"),
+    ];
+    for (suite, n, prop) in expect {
+        let v = check(suite, &fx(n), &[]);
+        assert_eq!(admission(&v), "REJECT", "{n}");
+        assert!(violated(&v).contains(&prop.to_string()), "{n}: expected {prop}, got {:?}", violated(&v));
+    }
+}
+
+#[test]
+fn same_contract_other_isa() {
+    let v = check("examples/add64/suite.aarch64.toml", "fixtures/aarch64/add64.bin", &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    let v = check("examples/add64/suite.aarch64.toml", "fixtures/aarch64/add64_mut_sub.bin", &[]);
+    assert_eq!(admission(&v), "REJECT");
+    assert!(violated(&v).contains(&"arith.add64/sum".to_string()));
+}
+
+#[test]
+fn narrow_arguments_have_unspecified_upper_bits() {
+    let v = check("examples/add32/suite.x86_64.toml", &fx("add32"), &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    let v = check("examples/zext32/suite.x86_64.toml", &fx("zext32"), &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    // `mov rax, rdi` is correct only if the caller zeroed the upper 32 bits.
+    let v = check("examples/zext32/suite.x86_64.toml", &fx("zext32_mut_upper_bits"), &[]);
+    assert_eq!(admission(&v), "REJECT");
+    assert!(violated(&v).contains(&"arith.zext32/zero_extended".to_string()));
+}

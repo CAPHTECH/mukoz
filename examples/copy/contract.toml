@@ -1,0 +1,24 @@
+schema = "mukoz.contract/1"
+id = "mem.copy"
+boundary = "routine"
+modifies = ["dst"]
+
+[inputs]
+src = { type = "bytes", max_len = 256 }
+
+[state]
+dst = { type = "bytes", max_len = 256 }
+
+[[requires]]
+id = "same_len"
+expr = "len(before.dst) == len(input.src)"
+
+[[ensures]]
+id = "copied"
+expr = "after.dst == input.src"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

@@ -1,0 +1,27 @@
+schema = "mukoz.contract/1"
+id = "counter.checked_inc"
+boundary = "routine"
+modifies = ["count"]
+
+[inputs]
+n = "bv64"
+
+[state]
+count = "bv64"
+
+[results]
+status = "bv32"
+
+[[ensures]]
+id = "ok_iff_no_overflow"
+expr = "(result.status == bv32(0)) == (not ult(before.count + input.n, before.count))"
+
+[[ensures]]
+id = "update"
+expr = "ite(result.status == bv32(0), after.count == before.count + input.n, after.count == before.count)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

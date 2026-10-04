@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "arith.add32.x86_64"
+contract = "contract.toml"
+binding = "binding.x86_64.toml"
+
+[artifact]
+path = "../../fixtures/x86_64/add32.bin"
+
+[generate]
+seed = "4"
+random_cases = 256
