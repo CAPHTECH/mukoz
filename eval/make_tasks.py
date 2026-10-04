@@ -390,6 +390,12 @@ access = "r"
 len = "udiv(len(input.src) + bv64(2), bv64(3)) * bv64(4)"
 ''')
 
+T["count_byte_fast"] = dict(T["count_byte"])
+T["count_byte_fast"]["spec"] = T["count_byte"]["spec"].replace("uint64_t count_byte(", "uint64_t count_byte_fast(") + (
+    " Performance requirement: process the buffer 8 bytes per load (64-bit loads combined with word-at-a-time / SWAR bit tricks); "
+    "a loop that handles every byte individually is not acceptable. At most 7 leftover bytes at the end may be handled one at a time. "
+    "Unaligned 64-bit loads are allowed, but never read outside buf[0..n).")
+
 for name, t in T.items():
     d = os.path.join("tasks", name)
     os.makedirs(d, exist_ok=True)
@@ -414,7 +420,7 @@ A64_ABI = ("Target CPU: AArch64 (ARMv8-A, little-endian). Calling convention: AA
            "Use only base integer A64 instructions (no SIMD/FP). The routine must not make system calls and must only touch the memory "
            "described below (plus its own stack below the incoming sp).")
 A64_REG = {"rdi": "x0", "rsi": "x1", "rdx": "x2", "rcx": "x3", "r8": "x4", "r9": "x5", "rax": "x0"}
-A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64"]
+A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64", "count_byte_fast"]
 for name in A64_TASKS:
     t = T[name]
     d = os.path.join("tasks", name + "_a64")

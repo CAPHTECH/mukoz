@@ -1,0 +1,20 @@
+schema = "mukoz.contract/1"
+id = "task.count_byte_fast"
+boundary = "routine"
+
+[inputs]
+buf = { type = "bytes", max_len = 256 }
+c = "bv8"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "value"
+expr = "result.value == (count i in bv64(0)..len(input.buf): input.buf[i] == input.c)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

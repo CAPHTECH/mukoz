@@ -140,6 +140,17 @@ def t_base64(rng):
     want = base64.b64encode(src)
     return [dst, src], ["p0", "p1", n], lambda r: None if r["bufs"][0] == want else f"dst wrong (n={n}): {r['bufs'][0][-8:]!r} want {want[-8:]!r}"
 
+def t_count_byte_fast(rng):
+    # Adversarial bytes for word-at-a-time (SWAR) implementations: c next to c^1 etc.
+    n = rlen(rng)
+    c = rng.randrange(256)
+    pool = [c, c ^ 1, c ^ 0x80, c ^ 0xff, 0, 1, 0x80, 0xff]
+    adv = rng.random() < 0.6
+    buf = bytes(rng.choice(pool) if adv and rng.random() < 0.8 else rng.randrange(256) for _ in range(n))
+    want = buf.count(c)
+    return [buf], ["p0", n, garbage_upper(rng, c, 8)], \
+        lambda r: None if r["rax"] == want else f"rax={r['rax']} want {want} (n={n}, c={c:#x})"
+
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
 def judge_a64(task, binary, cases, seed):

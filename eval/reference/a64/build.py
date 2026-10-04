@@ -150,7 +150,36 @@ def base64(mutant=False):
     return a.bytes()
 
 
-MUTANTS = {"base64": "pad", "count_byte": "widecmp", "memmove": "forward_only", "isqrt": "bit30", "hex_encode": "upper"}
+def movk(d, imm, hw): return 0xF2800000 | (hw << 21) | (imm << 5) | d
+def ldr_x_r(t, n, m): return 0xF8606800 | (m << 16) | (n << 5) | t
+def eor_r(d, n, m): return 0xCA000000 | (m << 16) | (n << 5) | d
+def and_r(d, n, m): return 0x8A000000 | (m << 16) | (n << 5) | d
+def bic_r(d, n, m): return 0x8A200000 | (m << 16) | (n << 5) | d
+def orn_r(d, n, m): return 0xAA200000 | (m << 16) | (n << 5) | d
+def sub_r(d, n, m): return 0xCB000000 | (m << 16) | (n << 5) | d
+
+
+def const64(d, half):
+    return [movz(d, half)] + [movk(d, half, hw) for hw in (1, 2, 3)]
+
+
+def count_byte_fast(mutant=False):
+    a = Asm()
+    a(uxtb(6, 2), *const64(8, 0x0101), mul(2, 6, 8), *const64(9, 0x7F7F), movz(3, 0), movz(4, 0))
+    a.label("word"); a(add_i(5, 4, 8), cmp_r(5, 1)); a.bcond(HI, "tail")
+    a(ldr_x_r(10, 0, 4), eor_r(10, 10, 2))
+    if mutant:
+        a(sub_r(11, 10, 8), bic_r(11, 11, 10), orn_r(12, XZR, 9), and_r(11, 11, 12))
+    else:
+        a(and_r(11, 10, 9), add_r(11, 11, 9), orr_r(11, 11, 10), orr_r(11, 11, 9), orn_r(11, XZR, 11))
+    a(lsr_i(11, 11, 7), mul(11, 11, 8), lsr_i(11, 11, 56), add_r(3, 3, 11), mov_r(4, 5)); a.b("word")
+    a.label("tail"); a(cmp_r(4, 1)); a.bcond(HS, "done")
+    a(ldrb_r(5, 0, 4), cmp_r(5, 6, 0), cinc(3, 3, EQ), add_i(4, 4, 1)); a.b("tail")
+    a.label("done"); a(mov_r(0, 3), RET)
+    return a.bytes()
+
+
+MUTANTS = {"count_byte_fast": "haszero", "base64": "pad", "count_byte": "widecmp", "memmove": "forward_only", "isqrt": "bit30", "hex_encode": "upper"}
 
 if __name__ == "__main__":
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bin")

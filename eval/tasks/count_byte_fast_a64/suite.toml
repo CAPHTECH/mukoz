@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "task.count_byte_fast_a64"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "count_byte_fast"
+random_cases = 1024
+
+[limits]
+instructions_per_case = 200000
