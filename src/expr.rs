@@ -803,13 +803,90 @@ pub fn eval_traced(e: &Expr, cx: &EvalCtx, limit: usize) -> (Result<Value, Strin
     (r, t)
 }
 
+/// Explains why a boolean expression is false: follows the false branch of `and`, names the
+/// first falsifying index of `forall` (witness) and shows both sides of the failing comparison.
+/// Texts are shortened so that large contracts stay readable.
+pub fn explain_false(e: &Expr, cx: &EvalCtx) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut locals = Vec::new();
+    explain(e, cx, &mut locals, &mut out, 0);
+    out
+}
+
+fn short(s: String) -> String {
+    const MAX: usize = 120;
+    if s.chars().count() <= MAX { s } else { s.chars().take(MAX).collect::<String>() + "…" }
+}
+
+fn explain(e: &Expr, cx: &EvalCtx, locals: &mut Vec<(String, u64)>, out: &mut Vec<(String, String)>, depth: usize) {
+    let val = |x: &Expr, locals: &mut Vec<(String, u64)>| match ev(x, cx, locals, &mut None) {
+        Ok(v) => short(v.to_string()),
+        Err(m) => format!("error: {m}"),
+    };
+    if depth > 16 {
+        out.push((short(e.to_string()), val(e, locals)));
+        return;
+    }
+    match e {
+        Expr::Binary(BinOp::And, a, b) => {
+            let a_false = matches!(ev(a, cx, locals, &mut None), Ok(Value::Bool(false)));
+            explain(if a_false { a } else { b }, cx, locals, out, depth + 1);
+        }
+        Expr::Unary(UnOp::Not, a) => {
+            out.push((short(e.to_string()), "false".into()));
+            out.push((short(a.to_string()), val(a, locals)));
+        }
+        Expr::Forall(v, lo, hi, body) => {
+            let (Ok(Value::Bv(_, lo)), Ok(Value::Bv(_, hi))) = (ev(lo, cx, locals, &mut None), ev(hi, cx, locals, &mut None)) else {
+                out.push((short(e.to_string()), val(e, locals)));
+                return;
+            };
+            let mut i = lo;
+            while i < hi {
+                locals.push((v.clone(), i));
+                let r = ev(body, cx, locals, &mut None);
+                if !matches!(r, Ok(Value::Bool(true))) {
+                    out.push((format!("witness: {v} (range {lo}..{hi})"), format!("{i} (0x{i:x})")));
+                    explain(body, cx, locals, out, depth + 1);
+                    locals.pop();
+                    return;
+                }
+                locals.pop();
+                i += 1;
+            }
+            out.push((short(e.to_string()), val(e, locals)));
+        }
+        Expr::Call(name, args) if name == "ite" && args.len() == 3 => {
+            let c = matches!(ev(&args[0], cx, locals, &mut None), Ok(Value::Bool(true)));
+            out.push((short(args[0].to_string()), c.to_string()));
+            explain(&args[if c { 1 } else { 2 }], cx, locals, out, depth + 1);
+        }
+        Expr::Binary(_, a, b) => {
+            out.push((short(e.to_string()), val(e, locals)));
+            for side in [a, b] {
+                out.push((short(side.to_string()), val(side, locals)));
+                if let Expr::Index(_, i) = side.as_ref() {
+                    out.push((format!("  index {}", short(i.to_string())), val(i, locals)));
+                }
+            }
+        }
+        Expr::Call(_, args) => {
+            out.push((short(e.to_string()), val(e, locals)));
+            for a in args {
+                out.push((short(a.to_string()), val(a, locals)));
+            }
+        }
+        _ => out.push((short(e.to_string()), val(e, locals))),
+    }
+}
+
 type Trace = Option<Vec<(String, String)>>;
 
 fn ev(e: &Expr, cx: &EvalCtx, locals: &mut Vec<(String, u64)>, tr: &mut Trace) -> Result<Value, String> {
     let v = ev_inner(e, cx, locals, tr)?;
     if let Some(t) = tr.as_mut() {
         if !matches!(e, Expr::Lit(_) | Expr::Int(_)) && t.len() < 4096 {
-            t.push((e.to_string(), v.to_string()));
+            t.push((short(e.to_string()), short(v.to_string())));
         }
     }
     Ok(v)
@@ -1038,6 +1115,20 @@ fn call(name: &str, a: &[Value]) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explain_false_names_the_witness_and_both_sides() {
+        let mut vars = ValEnv::new();
+        vars.insert("after.dst".into(), Value::Bytes(vec![1, 2, 9, 4]));
+        vars.insert("input.want".into(), Value::Bytes(vec![1, 2, 3, 4]));
+        let empty = BTreeMap::new();
+        let cx = EvalCtx { vars: &vars, region_addrs: &empty };
+        let e = parse("forall i in bv64(0)..bv64(4): after.dst[i] == input.want[i]").unwrap();
+        let why = explain_false(&e, &cx);
+        assert_eq!(why[0].1, "2 (0x2)", "{why:?}");
+        let vals: Vec<&str> = why.iter().map(|(_, v)| v.as_str()).collect();
+        assert!(vals.contains(&"bv8(0x09)") && vals.contains(&"bv8(0x03)"), "{why:?}");
+    }
 
     fn ev_str(src: &str, vars: &[(&str, Value)]) -> Value {
         let e = parse(src).unwrap();

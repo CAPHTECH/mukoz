@@ -163,9 +163,11 @@ pub fn judge_case(contract: &Contract, binding: &Binding, case: &Case, obs: &Obs
             Ok(Value::Bool(true)) => out.push(claim(&p, SatisfiedInScope, None)),
             Ok(_) => {
                 let (_, trace) = expr::eval_traced(&e.expr, &cx, 16);
+                let why = expr::explain_false(&e.expr, &cx);
                 let mut c = claim(&p, Violated, Some("ENSURES_FALSE"));
                 c.detail = Some(serde_json::json!({
                     "expr": e.src,
+                    "why_false": why.into_iter().map(|(k, v)| serde_json::json!([k, v])).collect::<Vec<_>>(),
                     "subexpression_values": trace.into_iter().map(|(k, v)| serde_json::json!([k, v])).collect::<Vec<_>>(),
                 }));
                 out.push(c);

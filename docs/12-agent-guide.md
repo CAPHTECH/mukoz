@@ -23,7 +23,9 @@ AIエージェントが、ソースなしでバイナリを生成・修正し、
 | 見る所 | 内容 |
 |---|---|
 | `data.assessment.reasons` | 破れた性質の一覧(`VIOLATED: <性質ID>`) |
-| `data.findings[]` | 性質ごとに最大3件の反例。入力(`inputs`)、停止理由(`stop`)、破れた式と部分式の値、観測値、直前16命令(オフセットとバイト列) |
+| `data.findings[]` | 性質ごとに最大3件の反例。入力(`inputs`)、停止理由(`stop`)、観測値、直前16命令(オフセットとバイト列)、`detail` |
+| `detail.why_false` | **まずここを読む。**式が偽になった理由: `forall` の最初の反例の添字(`witness`)、偽の比較の両辺の値(観測値と期待値)、添字アクセスの添字の値。`and` は偽の側だけを辿る |
+| `recent_instructions` | 停止した時点の直前16命令。メモリ違反・不正命令ではその場所を指す。**結果の誤り(ensures)では戻る直前の命令しか写らない**ので、`why_false` と入力から場所を絞る |
 | `mukoz show <反例ID> --store .mukoz` | 反例の全情報 |
 | `mukoz replay <反例ID> --artifact <file> --store .mukoz` | 直したバイナリでその反例だけを再実行。`property_now` で今どうなったかが分かる |
 

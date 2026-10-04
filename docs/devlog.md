@@ -30,3 +30,5 @@
 | 2026-10-04 | R | 再設計: 直積の縮小を plan_stats.boundary_mode と limitations に出す。scope.input_summary(変数ごとの生成範囲)を追加。受け入れテスト1本、報告を消すと落ちることを確認。設計の不足4件を docs/11 に未解決として記録 |
 | 2026-10-04 | R | 再設計: 領域の開始 alignment を case ごとに変える(`placement = "varied"` 既定、seed 由来で再現可能)。fixture copy_mut_unaligned(整列していない経路だけ1バイト不足)で aligned=ACCEPT / varied=REJECT を確認。全課題の参照20件 ACCEPT・変異21件 REJECT を再確認(各1回) |
 | 2026-10-04 | R | docs/12 エージェント向けの使い方を追加(試験の指示文で渡していた内容と、契約作成の試験で分かった書き方を正本化) |
+| 2026-10-04 | 4 | 反例から直すループを初めて観測: gcc -O3 base64 の修正、docs/12 だけを渡した条件A で REJECT → 性質IDと反例の入出力から箇所を特定 → ACCEPT。最終判定 PASS(A・B とも、各1回) |
+| 2026-10-04 | R | 再設計: 違反の detail に why_false(forall の反例添字、偽の比較の両辺、添字の値、`and` は偽の側だけ)を追加。式と値の表示を120文字で打ち切る。単体テスト1本。docs/12 に recent_instructions の限界を明記 |
