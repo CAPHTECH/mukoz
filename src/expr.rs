@@ -148,6 +148,8 @@ pub enum Expr {
     Int(u64),
     Index(Box<Expr>, Box<Expr>),
     Forall(String, Box<Expr>, Box<Expr>, Box<Expr>),
+    /// Number of i in [lo, hi) for which the body holds (bv64).
+    Count(String, Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -211,6 +213,7 @@ impl fmt::Display for Expr {
             }
             Expr::Index(b, i) => write!(f, "{b}[{i}]"),
             Expr::Forall(v, lo, hi, body) => write!(f, "(forall {v} in {lo}..{hi}: {body})"),
+            Expr::Count(v, lo, hi, body) => write!(f, "(count {v} in {lo}..{hi}: {body})"),
         }
     }
 }
@@ -506,13 +509,13 @@ impl Parser {
                 match id.as_str() {
                     "true" => return self.node(Expr::Lit(Value::Bool(true))),
                     "false" => return self.node(Expr::Lit(Value::Bool(false))),
-                    "forall" => {
+                    "forall" | "count" => {
                         let Some(Tok::Ident(v)) = self.peek().cloned() else {
-                            return Err("expected variable after forall".into());
+                            return Err(format!("expected variable after {id}"));
                         };
                         self.pos += 1;
                         if !self.is_kw("in") {
-                            return Err("expected `in` in forall".into());
+                            return Err(format!("expected `in` in {id}"));
                         }
                         self.pos += 1;
                         let lo = self.bitor()?;
@@ -520,7 +523,12 @@ impl Parser {
                         let hi = self.bitor()?;
                         self.expect_sym(":")?;
                         let body = self.expr()?;
-                        return self.node(Expr::Forall(v, Box::new(lo), Box::new(hi), Box::new(body)));
+                        let e = if id == "forall" {
+                            Expr::Forall(v, Box::new(lo), Box::new(hi), Box::new(body))
+                        } else {
+                            Expr::Count(v, Box::new(lo), Box::new(hi), Box::new(body))
+                        };
+                        return self.node(e);
                     }
                     _ => {}
                 }
@@ -652,14 +660,15 @@ fn tc(e: &Expr, cx: &CheckCtx, locals: &mut Vec<String>) -> Result<Ty, String> {
             expect(tc(i, cx, locals)?, Ty::Bv(64), "index")?;
             Ok(Ty::Bv(8))
         }
-        Expr::Forall(v, lo, hi, body) => {
-            expect(tc(lo, cx, locals)?, Ty::Bv(64), "forall bound")?;
-            expect(tc(hi, cx, locals)?, Ty::Bv(64), "forall bound")?;
+        Expr::Forall(v, lo, hi, body) | Expr::Count(v, lo, hi, body) => {
+            let what = if matches!(e, Expr::Forall(..)) { "forall" } else { "count" };
+            expect(tc(lo, cx, locals)?, Ty::Bv(64), &format!("{what} bound"))?;
+            expect(tc(hi, cx, locals)?, Ty::Bv(64), &format!("{what} bound"))?;
             locals.push(v.clone());
             let t = tc(body, cx, locals);
             locals.pop();
-            expect(t?, Ty::Bool, "forall body")?;
-            Ok(Ty::Bool)
+            expect(t?, Ty::Bool, &format!("{what} body"))?;
+            Ok(if what == "forall" { Ty::Bool } else { Ty::Bv(64) })
         }
         Expr::Call(name, args) => tc_call(name, args, cx, locals),
     }
@@ -900,7 +909,31 @@ fn ev_inner(e: &Expr, cx: &EvalCtx, locals: &mut Vec<(String, u64)>, tr: &mut Tr
             }
             Ok(Value::Bool(true))
         }
+        Expr::Count(v, lo, hi, body) => {
+            let (_, lo) = bvs(&ev(lo, cx, locals, tr)?)?;
+            let (_, hi) = bvs(&ev(hi, cx, locals, tr)?)?;
+            if hi > lo && hi - lo > MAX_FORALL {
+                return Err(format!("count range {lo}..{hi} exceeds {MAX_FORALL}"));
+            }
+            let mut n = 0u64;
+            let mut i = lo;
+            while i < hi {
+                locals.push((v.clone(), i));
+                let r = ev(body, cx, locals, &mut None);
+                locals.pop();
+                if boolv(&r?)? {
+                    n += 1;
+                }
+                i += 1;
+            }
+            Ok(Value::Bv(64, n))
+        }
         Expr::Call(name, args) => {
+            if name == "ite" {
+                // Lazy: only the selected branch is evaluated.
+                let c = boolv(&ev(&args[0], cx, locals, tr)?)?;
+                return ev(&args[if c { 1 } else { 2 }], cx, locals, tr);
+            }
             if name == "addr" {
                 let Expr::Path(p) = &args[0] else { return Err("addr needs a region".into()) };
                 return cx
@@ -1042,6 +1075,16 @@ mod tests {
         assert_eq!(ev_str("forall i in bv64(0)..len(x): ult(x[i], bv8(0x64))", &[("x", s.clone())]), Value::Bool(true));
         assert_eq!(ev_str("forall i in bv64(0)..len(x): ult(x[i], bv8(0x63))", &[("x", s.clone())]), Value::Bool(false));
         assert_eq!(ev_str("le_bytes(bv32(0x01020304)) == hex\"04030201\"", &[]), Value::Bool(true));
+    }
+
+    #[test]
+    fn known_answers_count_and_lazy_ite() {
+        let x = Value::Bv(64, 0xf0f0);
+        assert_eq!(ev_str("count i in bv64(0)..bv64(64): (lshr(x, i) & bv64(1)) == bv64(1)", &[("x", x)]), Value::Bv(64, 8));
+        let s = Value::Bytes(b"abca".to_vec());
+        assert_eq!(ev_str("count i in bv64(0)..len(s): s[i] == bv8(0x61)", &[("s", s)]), Value::Bv(64, 2));
+        let z = Value::Bv(64, 0);
+        assert_eq!(ev_str("ite(a == bv64(0), true, udiv(bv64(5), a) == bv64(1))", &[("a", z)]), Value::Bool(true));
     }
 
     #[test]

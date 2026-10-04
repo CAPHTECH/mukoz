@@ -1,0 +1,19 @@
+schema = "mukoz.contract/1"
+id = "task.popcount"
+boundary = "routine"
+
+[inputs]
+x = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "value"
+expr = "result.value == (count i in bv64(0)..bv64(64): (lshr(input.x, i) & bv64(1)) == bv64(1))"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

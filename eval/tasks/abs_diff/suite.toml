@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "task.abs_diff"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "abs_diff"
+random_cases = 1024
+
+[limits]
+instructions_per_case = 200000

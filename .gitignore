@@ -1,3 +1,5 @@
 /target
 /spikes/*/target
 .mukoz/
+/eval/oracle/runner
+/eval/reference/bin/

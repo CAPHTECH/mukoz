@@ -13,3 +13,6 @@
 | 2026-10-04 | 3 | 受入試験 4本(fixture 11個): 正しい4種 ACCEPT、変異5種が予告どおりの性質で REJECT、無限ループ・ud2 が HOLD、fail-fast。単体12本。すべて通過(1回)。回帰ケースは次回の先頭で再発を検出(1回) |
 | 2026-10-04 | 3b | 領域・ポインタ・状態の3課題(copy、strlen、checked_inc)と AArch64 add64 を追加。正しい実装 ACCEPT、変異4種が予告どおり REJECT(1回) |
 | 2026-10-04 | 3b | 64bit未満の引数はレジスタ上位ビットに乱数を入れるよう変更(SysVで不定)。`mov rax,rdi` 変異で検出、乱数化を外す故障注入で試験が落ちることを確認(1回) |
+| 2026-10-04 | E1 | 式言語に `count` を追加、`ite` を遅延評価に変更(選ばれない側の0除算で INCONCLUSIVE になっていた)。`cargo test --bin` だけでは `target/debug/mukoz` が更新されず、古いバイナリで判定していたことに気付いた |
+| 2026-10-04 | E1 | 比較試験の8課題(abs_diff, smax, popcount, sat_add_u32, fill, count_byte, reverse, checked_mul)。Mukoz: 参照実装8 ACCEPT、変異8 REJECT。reverse の最初の変異は等価変異だったので差し替え(1回) |
+| 2026-10-04 | E1 | 隠し判定(C ランナー: fork + seccomp strict + guard page + canary + callee-saved 番兵、Python 参照実装): 参照実装8 PASS、変異8 FAIL(各1,500ケース、1回) |

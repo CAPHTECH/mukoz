@@ -1,0 +1,27 @@
+schema = "mukoz.contract/1"
+id = "task.checked_mul"
+boundary = "routine"
+modifies = ["out"]
+[inputs]
+a = "bv64"
+b = "bv64"
+
+[state]
+out = "bv64"
+
+[results]
+status = "bv32"
+
+[[ensures]]
+id = "status"
+expr = "result.status == ite(ite(input.a == bv64(0), true, udiv(input.a * input.b, input.a) == input.b), bv32(0), bv32(1))"
+
+[[ensures]]
+id = "out"
+expr = "ite(result.status == bv32(0), after.out == input.a * input.b, after.out == before.out)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

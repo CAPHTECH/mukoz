@@ -1,0 +1,18 @@
+schema = "mukoz.binding/1"
+id = "task.smax@x86_64-sysv"
+contract = "task.smax"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "input.a"
+rsi = "input.b"
+
+[results]
+value = "rax"
+
+[completion]
+kind = "return_to_sentinel"

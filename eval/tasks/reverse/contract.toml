@@ -1,0 +1,16 @@
+schema = "mukoz.contract/1"
+id = "task.reverse"
+boundary = "routine"
+modifies = ["buf"]
+[state]
+buf = { type = "bytes", max_len = 256 }
+
+[[ensures]]
+id = "reversed"
+expr = "len(after.buf) == len(before.buf) and (forall i in bv64(0)..len(before.buf): after.buf[i] == before.buf[len(before.buf) - bv64(1) - i])"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

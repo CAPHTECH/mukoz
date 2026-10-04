@@ -1,0 +1,24 @@
+schema = "mukoz.binding/1"
+id = "task.count_byte@x86_64-sysv"
+contract = "task.count_byte"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "addr(buf)"
+rsi = "len(input.buf)"
+rdx = "input.c"
+
+[results]
+value = "rax"
+
+[regions.buf]
+size = "len(input.buf)"
+init = "input.buf"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

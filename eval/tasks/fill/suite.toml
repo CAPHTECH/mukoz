@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "task.fill"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "fill"
+random_cases = 1024
+
+[limits]
+instructions_per_case = 200000

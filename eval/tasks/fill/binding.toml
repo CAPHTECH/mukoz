@@ -1,0 +1,22 @@
+schema = "mukoz.binding/1"
+id = "task.fill@x86_64-sysv"
+contract = "task.fill"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "addr(dst)"
+rsi = "input.c"
+rdx = "len(before.dst)"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[completion]
+kind = "return_to_sentinel"

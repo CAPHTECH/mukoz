@@ -1,0 +1,20 @@
+schema = "mukoz.contract/1"
+id = "task.smax"
+boundary = "routine"
+
+[inputs]
+a = "bv64"
+b = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "value"
+expr = "result.value == ite(sge(input.a, input.b), input.a, input.b)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

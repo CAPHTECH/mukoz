@@ -1,0 +1,20 @@
+schema = "mukoz.contract/1"
+id = "task.sat_add_u32"
+boundary = "routine"
+
+[inputs]
+a = "bv32"
+b = "bv32"
+
+[results]
+value = "bv32"
+
+[[ensures]]
+id = "value"
+expr = "result.value == ite(ult(input.a + input.b, input.a), bv32(0xffffffff), input.a + input.b)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

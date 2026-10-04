@@ -1,0 +1,19 @@
+schema = "mukoz.contract/1"
+id = "task.fill"
+boundary = "routine"
+modifies = ["dst"]
+[inputs]
+c = "bv8"
+
+[state]
+dst = { type = "bytes", max_len = 256 }
+
+[[ensures]]
+id = "filled"
+expr = "len(after.dst) == len(before.dst) and (forall i in bv64(0)..len(before.dst): after.dst[i] == input.c)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"
