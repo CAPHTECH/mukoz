@@ -39,7 +39,7 @@ def main():
                             "oracle_first_failures": j["first_failures"][:2],
                             "mukoz_on_final": mukoz_verdict(mukoz, task, sol),
                             "bytes": os.path.getsize(sol)})
-            if cond == "A":
+            if cond.endswith("A"):
                 rec["mukoz_check_runs"] = len(glob.glob(os.path.join(d, ".mukoz", "items", "run-*.json")))
             print(json.dumps(rec))
             f.write(json.dumps(rec) + "\n")

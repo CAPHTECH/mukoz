@@ -1,0 +1,24 @@
+schema = "mukoz.binding/1"
+id = "task.count_byte@aarch64-aapcs64"
+contract = "task.count_byte"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "addr(buf)"
+x1 = "len(input.buf)"
+x2 = "input.c"
+
+[results]
+value = "x0"
+
+[regions.buf]
+size = "len(input.buf)"
+init = "input.buf"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

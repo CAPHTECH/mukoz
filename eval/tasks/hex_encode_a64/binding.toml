@@ -1,0 +1,27 @@
+schema = "mukoz.binding/1"
+id = "task.hex_encode@aarch64-aapcs64"
+contract = "task.hex_encode"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "addr(dst)"
+x1 = "addr(src)"
+x2 = "len(input.src)"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(input.src)"
+init = "input.src"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

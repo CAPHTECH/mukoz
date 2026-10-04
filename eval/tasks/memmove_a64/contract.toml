@@ -1,0 +1,25 @@
+schema = "mukoz.contract/1"
+id = "task.memmove"
+boundary = "routine"
+modifies = ["buf"]
+[inputs]
+n = "bv64"
+doff = "bv64"
+soff = "bv64"
+
+[state]
+buf = { type = "bytes", max_len = 128 }
+
+[[requires]]
+id = "in_bounds"
+expr = "ule(input.n, len(before.buf)) and ule(input.doff, len(before.buf) - input.n) and ule(input.soff, len(before.buf) - input.n)"
+
+[[ensures]]
+id = "moved"
+expr = "after.buf == concat(concat(slice(before.buf, bv64(0), input.doff), slice(before.buf, input.soff, input.n)), slice(before.buf, input.doff + input.n, len(before.buf) - input.doff - input.n))"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

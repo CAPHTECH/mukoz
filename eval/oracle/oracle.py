@@ -7,6 +7,7 @@ seed chosen at judgement time, after the submission exists.
 usage: python3 oracle.py <task> <code.bin> [--cases N] [--seed S]
 """
 import json, os, random, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 M64 = (1 << 64) - 1
@@ -134,9 +135,29 @@ def t_isqrt(rng):
 
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
+def judge_a64(task, binary, cases, seed):
+    """AArch64 submissions: run under the independent interpreter a64.py."""
+    import a64
+    rng = random.Random(seed)
+    gen = TASKS[task[:-4]]
+    code = open(binary, "rb").read()
+    fails = []
+    for i in range(cases):
+        bufs, args, check = gen(rng)
+        try:
+            r = a64.call(code, bufs, args, rng)
+        except a64.Fault as e:
+            fails.append((i, f"{e.kind}: {e}")); continue
+        msg = "callee-saved register or sp changed" if not r["saved"] else check(r)
+        if msg: fails.append((i, msg))
+    return {"task": task, "binary": binary, "seed": seed, "cases": cases, "passed": cases - len(fails),
+            "failed": len(fails), "verdict": "PASS" if not fails else "FAIL", "first_failures": fails[:5]}
+
 def judge(task, binary, cases=2000, seed=None):
     if seed is None:
         seed = int.from_bytes(os.urandom(8), "little")
+    if task.endswith("_a64"):
+        return judge_a64(task, binary, cases, seed)
     rng = random.Random(seed)
     gen = TASKS[task]
     specs, lines = [], []

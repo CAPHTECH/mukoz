@@ -1,0 +1,19 @@
+schema = "mukoz.contract/1"
+id = "task.isqrt"
+boundary = "routine"
+
+[inputs]
+x = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "floor_sqrt"
+expr = "ult(result.value, bv64(0x100000000)) and ule(result.value * result.value, input.x) and ite(result.value == bv64(0xffffffff), true, ult(input.x, (result.value + bv64(1)) * (result.value + bv64(1))))"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

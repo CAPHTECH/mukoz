@@ -18,3 +18,5 @@
 | 2026-10-04 | E1 | 隠し判定(C ランナー: fork + seccomp strict + guard page + canary + callee-saved 番兵、Python 参照実装): 参照実装8 PASS、変異8 FAIL(各1,500ケース、1回) |
 | 2026-10-04 | 4 | 比較試験 第1群(abs_diff, fill, popcount, checked_mul × 条件A/B、各1回): 8件とも1回目で完成、隠し判定 PASS、Mukoz判定も ACCEPT。難易度が低く条件差は出ない |
 | 2026-10-04 | E1 | 生成器に `max`(上限式)と依存順の並べ替えを追加。難課題4つ(memmove 重なりあり、hex_encode、shl_var、isqrt)を追加: Mukoz で参照 ACCEPT・変異 REJECT、隠し判定で参照 PASS・変異 FAIL(各1回)。memmove の戻り値はアドレスで契約(ISA非依存)に書けないため要件から外した |
+| 2026-10-04 | 4 | 比較試験 x86 計20件(生成16: 8課題×A/B、修正4: count_byte・memmove・isqrt × A/B ※isqrt は A/B とも追加で実施し計6): 全件1回目で隠し判定 PASS・Mukoz ACCEPT。Mukoz ACCEPT かつ隠し判定 FAIL は0件。条件差は出ない([R] 課題が易しすぎ、修正課題の不具合も読めば分かる規模) |
+| 2026-10-04 | E1 | 条件差の出る状況として異ISA(x86ホストで aarch64 を生成)を追加。独立判定器 eval/oracle/a64.py(Unicorn非依存の A64 整数部分集合インタプリタ、範囲外は unsupported=FAIL)。手書き符号化の参照/変異 4組: Mukoz と a64.py が8件全一致(各1回)。a64.py 自体の故障注入(callee-saved破壊・範囲外読み・SIMD・無限ループ)4件すべて FAIL |

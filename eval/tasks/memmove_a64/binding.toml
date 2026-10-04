@@ -1,0 +1,22 @@
+schema = "mukoz.binding/1"
+id = "task.memmove@aarch64-aapcs64"
+contract = "task.memmove"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "addr(buf) + input.doff"
+x1 = "addr(buf) + input.soff"
+x2 = "input.n"
+
+[regions.buf]
+size = "len(before.buf)"
+init = "before.buf"
+access = "rw"
+observe_as = "after.buf"
+
+[completion]
+kind = "return_to_sentinel"

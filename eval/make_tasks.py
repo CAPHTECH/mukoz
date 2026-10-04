@@ -3,7 +3,7 @@
 Contracts are written by hand here; the hidden oracle (oracle.py) has its own
 independent Python reference for each task.
 """
-import os, textwrap
+import os, re, textwrap
 
 COMMON_ABI = ("Calling convention: x86-64 System V. Arguments in rdi, rsi, rdx, rcx, r8, r9; "
               "return value in rax (or eax for 32-bit results). Preserve rbx, rbp, r12-r15 and rsp. "
@@ -380,3 +380,34 @@ for name, t in T.items():
         f.write(f'schema = "mukoz.suite/1"\nid = "task.{name}"\ncontract = "contract.toml"\nbinding = "binding.toml"\n\n'
                 f'[generate]\nseed = "{name}"\nrandom_cases = 1024\n' + t.get("suite_extra", "") + '\n[limits]\ninstructions_per_case = 200000\n')
 print("ok", sorted(T))
+
+# --- aarch64 variants (cross-ISA experiment): same contracts, AAPCS64 bindings.
+A64_ABI = ("Target CPU: AArch64 (ARMv8-A, little-endian). Calling convention: AAPCS64. Arguments in x0-x7 (w0-w7 for 32-bit and narrower), "
+           "return value in x0 (or w0). Return with RET to the address in x30. Preserve x19-x29 and sp. "
+           "Upper bits of registers that carry arguments narrower than 64 bits are unspecified (may be garbage). "
+           "Use only base integer A64 instructions (no SIMD/FP). The routine must not make system calls and must only touch the memory "
+           "described below (plus its own stack below the incoming sp).")
+A64_REG = {"rdi": "x0", "rsi": "x1", "rdx": "x2", "rcx": "x3", "r8": "x4", "r9": "x5", "rax": "x0"}
+A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode"]
+for name in A64_TASKS:
+    t = T[name]
+    d = os.path.join("tasks", name + "_a64")
+    os.makedirs(d, exist_ok=True)
+    spec = t["spec"].replace("low 8 bits of edx", "low 8 bits of w2")
+    with open(os.path.join(d, "spec.md"), "w") as f:
+        f.write(f"# Task: {name} (AArch64)\n\n{spec}\n\n{A64_ABI}\n\nDeliverable: a raw AArch64 machine-code file (little-endian 32-bit instruction words) whose first instruction is the entry point.\n")
+    with open(os.path.join("tasks", name, "contract.toml")) as f:
+        contract = f.read()
+    with open(os.path.join(d, "contract.toml"), "w") as f:
+        f.write(contract)
+    binding = t["binding"]
+    for x, a in A64_REG.items():
+        binding = re.sub(rf'^{x} =', f'{a} =', binding, flags=re.M)
+        binding = re.sub(rf'= "{x}"', f'= "{a}"', binding)
+    with open(os.path.join(d, "binding.toml"), "w") as f:
+        f.write(f'schema = "mukoz.binding/1"\nid = "task.{name}@aarch64-aapcs64"\ncontract = "task.{name}"\ntarget = "aarch64/raw/aapcs64/none"\n\n'
+                '[entry]\nkind = "raw_offset"\noffset = 0\n' + binding + '\n[completion]\nkind = "return_to_sentinel"\n')
+    with open(os.path.join(d, "suite.toml"), "w") as f:
+        f.write(f'schema = "mukoz.suite/1"\nid = "task.{name}_a64"\ncontract = "contract.toml"\nbinding = "binding.toml"\n\n'
+                f'[generate]\nseed = "{name}"\nrandom_cases = 1024\n' + t.get("suite_extra", "") + '\n[limits]\ninstructions_per_case = 200000\n')
+print("ok a64", A64_TASKS)
