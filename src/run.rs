@@ -539,6 +539,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "modules": l.modules.iter().map(|(n, p)| json!({ "name": n, "path": std::fs::canonicalize(p).map(|p| p.display().to_string()).unwrap_or_default() })).collect::<Vec<_>>(),
                 "contract": { "id": l.contract.id, "digest": l.contract.digest },
                 "binding": { "id": l.binding.id, "digest": l.binding.digest },
+                "target": l.binding.target.text,
                 "property": s.property,
                 "failure_predicate": c.reason,
                 "case": { "id": case_id, "origin": case.origin, "values": values_json(case), "filler_seed": format!("0x{:016x}", case.filler_seed) },
@@ -669,6 +670,164 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     Ok((data, admission))
 }
 
+fn case_from_item(l: &Loaded, item: &serde_json::Value) -> Result<Case> {
+    let mut values = expr::ValEnv::new();
+    let vals = item["case"]["values"].as_object().ok_or_else(|| anyhow!("counterexample has no values"))?;
+    for (prefix, m) in [("input", &l.contract.inputs), ("before", &l.contract.state)] {
+        for (name, vt) in m {
+            let key = format!("{prefix}.{name}");
+            let v = vals.get(&key).and_then(|j| Value::from_json(vt.ty, j)).ok_or_else(|| anyhow!("counterexample value `{key}` does not fit the current contract"))?;
+            values.insert(key, v);
+        }
+    }
+    let seed = item["case"]["filler_seed"].as_str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
+    Ok(Case { id: item["case"]["id"].as_str().unwrap_or("replay").to_string(), origin: plan::Origin::Regression, values, filler_seed: seed })
+}
+
+fn load_for_item(item: &serde_json::Value) -> Result<Loaded> {
+    let suite_path = PathBuf::from(item["suite"].as_str().unwrap_or_default());
+    let art = PathBuf::from(item["artifact"]["path"].as_str().unwrap_or_default());
+    let modules: Vec<(String, PathBuf)> = item["modules"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|m| Some((m["name"].as_str()?.to_string(), PathBuf::from(m["path"].as_str()?)))).collect())
+        .unwrap_or_default();
+    load(&suite_path, Some(&art), &modules)
+}
+
+fn requires_hold(contract: &Contract, values: &expr::ValEnv) -> bool {
+    let empty = std::collections::BTreeMap::new();
+    contract.requires.iter().all(|r| matches!(expr::eval(&r.expr, &expr::EvalCtx { vars: values, region_addrs: &empty }), Ok(Value::Bool(true))))
+}
+
+fn size_of(v: &Value) -> u128 {
+    match v {
+        Value::Bv(_, x) => *x as u128,
+        Value::Bool(b) => *b as u128,
+        Value::Bytes(b) => (b.len() as u128) << 64 | b.iter().map(|x| *x as u128).sum::<u128>(),
+    }
+}
+
+/// Smaller candidates for one value, smallest first (docs/06 6.10: toward 0, boundary values,
+/// short byte strings).
+fn candidates(v: &Value) -> Vec<Value> {
+    let mut out = Vec::new();
+    match v {
+        Value::Bv(w, x) => {
+            for c in [0, 1, 2, x >> 32, x >> 16, x >> 8, x >> 1, x.saturating_sub(1), x & 0xff, x & 0xffff, x & 0xffff_ffff] {
+                if c < *x {
+                    out.push(Value::bv(*w, c));
+                }
+            }
+        }
+        Value::Bool(true) => out.push(Value::Bool(false)),
+        Value::Bool(false) => {}
+        Value::Bytes(b) => {
+            let n = b.len();
+            let mut add = |x: Vec<u8>| out.push(Value::Bytes(x));
+            if n > 0 {
+                add(Vec::new());
+                add(b[..n / 2].to_vec());
+                add(b[n / 2..].to_vec());
+                add(b[..n - 1].to_vec());
+                add(b[1..].to_vec());
+                // Same length, simpler bytes: each byte toward the smallest byte already present.
+                let lo = *b.iter().min().unwrap();
+                if b.iter().any(|x| *x != lo) {
+                    add(vec![lo; n]);
+                }
+            }
+        }
+    }
+    let cur = size_of(v);
+    out.retain(|c| size_of(c) < cur);
+    out.sort_by_key(size_of);
+    out.dedup_by(|a, b| a == b);
+    out
+}
+
+/// Greedy shrinking of a counterexample (docs/06 6.10). A candidate is kept only if `requires`
+/// still holds and the same property is violated for the same reason; contract, binding and
+/// expected values are never changed.
+pub fn shrink(store: &Store, cx_id: &str, budget: usize) -> Result<serde_json::Value> {
+    let item = store.get_item(cx_id)?;
+    if item["kind"] != "counterexample" {
+        bail!("`{cx_id}` is not a counterexample");
+    }
+    let l = load_for_item(&item)?;
+    let property = item["property"].as_str().unwrap_or_default().to_string();
+    let reason = item["failure_predicate"].clone();
+    let exec = Executor { image: &l.image, contract: &l.contract, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case, vary_placement: l.suite.vary_placement };
+    let mut case = case_from_item(&l, &item)?;
+    let mut executions = 0usize;
+    let mut fails = |c: &Case, executions: &mut usize| -> bool {
+        *executions += 1;
+        let obs = exec.run(c);
+        judge::judge_case(&l.contract, &l.binding, c, &obs).iter().any(|x| x.property == property && x.eval == Eval::Violated && json!(x.reason) == reason)
+    };
+    if !fails(&case, &mut executions) {
+        bail!("REPLAY_MISMATCH: `{cx_id}` does not reproduce on the recorded subject; nothing to shrink");
+    }
+    let mut steps = Vec::new();
+    let mut exhausted = false;
+    'outer: loop {
+        let mut changed = false;
+        let keys: Vec<String> = case.values.keys().cloned().collect();
+        for k in keys {
+            for cand in candidates(&case.values[&k]) {
+                if executions >= budget {
+                    exhausted = true;
+                    break 'outer;
+                }
+                let mut values = case.values.clone();
+                values.insert(k.clone(), cand.clone());
+                if !requires_hold(&l.contract, &values) {
+                    continue;
+                }
+                let trial = Case { values, ..case.clone() };
+                if fails(&trial, &mut executions) {
+                    steps.push(json!({ "variable": k, "from": case.values[&k].to_json(), "to": cand.to_json() }));
+                    case = trial;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    // Store the shrunk case as a counterexample of its own (and as a regression case).
+    let obs = exec.run(&case);
+    let claims = judge::judge_case(&l.contract, &l.binding, &case, &obs);
+    let c = claims.iter().find(|x| x.property == property).cloned();
+    let new_id = format!("cx-{}", &sha256_hex(format!("{cx_id}shrunk{}", values_json(&case)).as_bytes())[..12]);
+    let mut new_item = item.clone();
+    new_item["id"] = json!(new_id);
+    new_item["shrunk_from"] = json!(cx_id);
+    new_item["case"] = json!({ "id": format!("{}-shrunk", case.id), "origin": "shrink", "values": values_json(&case), "filler_seed": format!("0x{:016x}", case.filler_seed) });
+    new_item["stop"] = json!(obs.stop);
+    new_item["detail"] = json!(c.as_ref().and_then(|c| c.detail.clone()));
+    new_item["registers_in"] = json!(obs.regs_in.iter().map(|(k, v)| (k.clone(), json!(format!("0x{v:016x}")))).collect::<serde_json::Map<_, _>>());
+    new_item["registers_out"] = json!(obs.regs_out.iter().map(|(k, v)| (k.clone(), json!(format!("0x{v:016x}")))).collect::<serde_json::Map<_, _>>());
+    new_item["recent_instructions"] = json!(obs.recent);
+    new_item["observed"] = if matches!(obs.stop, emu::Stop::Returned | emu::Stop::Exited { .. }) || obs.process.is_some() { observed_json(&l, &case, &obs) } else { json!(null) };
+    store.put_item(&new_id, &new_item)?;
+    let added = store.add_regression(&l.contract, &l.binding.target.text, &case, &new_id)?;
+    Ok(json!({
+        "counterexample_id": new_id,
+        "shrunk_from": cx_id,
+        "property": property,
+        "failure_predicate": reason,
+        "inputs": values_json(&case),
+        "steps": steps,
+        "executions": executions,
+        "budget": budget,
+        "completed": !exhausted,
+        "search": "greedy per variable: toward 0 / small values for bit-vectors, false for booleans, shorter or uniform byte strings; a step is kept only when requires holds and the same property fails for the same reason",
+        "regression_case_added": added,
+    }))
+}
+
 pub fn replay(store: &Store, cx_id: &str, artifact: Option<&Path>) -> Result<serde_json::Value> {
     let item = store.get_item(cx_id)?;
     if item["kind"] != "counterexample" {
@@ -685,17 +844,7 @@ pub fn replay(store: &Store, cx_id: &str, artifact: Option<&Path>) -> Result<ser
         .unwrap_or_default();
     // With a link file, keep the recorded modules except the one --artifact replaces.
     let l = load(&suite_path, Some(&art), &modules.iter().filter(|_| artifact.is_none()).cloned().collect::<Vec<_>>())?;
-    let mut values = expr::ValEnv::new();
-    let vals = item["case"]["values"].as_object().ok_or_else(|| anyhow!("counterexample has no values"))?;
-    for (prefix, m) in [("input", &l.contract.inputs), ("before", &l.contract.state)] {
-        for (name, vt) in m {
-            let key = format!("{prefix}.{name}");
-            let v = vals.get(&key).and_then(|j| Value::from_json(vt.ty, j)).ok_or_else(|| anyhow!("counterexample value `{key}` does not fit the current contract"))?;
-            values.insert(key, v);
-        }
-    }
-    let seed = item["case"]["filler_seed"].as_str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
-    let case = Case { id: item["case"]["id"].as_str().unwrap_or("replay").to_string(), origin: plan::Origin::Regression, values, filler_seed: seed };
+    let case = case_from_item(&l, &item)?;
     let exec = Executor { image: &l.image, contract: &l.contract, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case, vary_placement: l.suite.vary_placement };
     let obs = exec.run(&case);
     let claims = judge::judge_case(&l.contract, &l.binding, &case, &obs);

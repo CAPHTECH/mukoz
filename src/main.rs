@@ -12,6 +12,7 @@ mod policy;
 mod qualify;
 mod qualify_vectors;
 mod run;
+mod show;
 mod spec;
 mod store;
 
@@ -21,7 +22,8 @@ use std::path::{Path, PathBuf};
 
 const USAGE: &str = "usage:
   mukoz check <suite.toml> [--artifact <file>] [--module <name>=<file>]... [--fail-fast] [--gate] [--store <dir>] [--policy <policy.toml>]
-  mukoz show <id> [--store <dir>]
+  mukoz show <id> [--page <n>] [--disasm] [--store <dir>]
+  mukoz shrink <counterexample-id> [--budget <executions>] [--store <dir>]
   mukoz replay <counterexample-id> [--artifact <file>] [--store <dir>]
   mukoz inspect <file>
   mukoz regressions list <suite.toml> [--store <dir>]
@@ -41,8 +43,8 @@ fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     while let Some(x) = it.next() {
         match x.as_str() {
-            "--fail-fast" | "--gate" | "--help" | "-h" => a.flags.push(x),
-            "--artifact" | "--store" | "--case" | "--module" | "--policy" | "--isa" => {
+            "--fail-fast" | "--gate" | "--help" | "-h" | "--disasm" => a.flags.push(x),
+            "--artifact" | "--store" | "--case" | "--module" | "--policy" | "--isa" | "--page" | "--budget" => {
                 let v = it.next().ok_or(format!("{x} needs a value"))?;
                 a.opts.push((x, v));
             }
@@ -142,13 +144,30 @@ fn real_main() -> i32 {
                 Err(e) => fail("check", e, 2),
             }
         }
-        ("show", 2) => match open_store(&a).and_then(|s| s.get_item(&a.pos[1])) {
+        ("show", 2) => match open_store(&a).and_then(|s| {
+            let page = a.opt("--page").map(|p| p.parse::<usize>().map_err(|_| anyhow::anyhow!("USAGE: --page needs a positive number"))).transpose()?;
+            show::show(&s, &a.pos[1], page, a.flag("--disasm"))
+        }) {
             Ok(v) => {
                 emit("show", true, v, vec![]);
                 0
             }
             Err(e) => fail("show", e, 2),
         },
+        ("shrink", 2) => {
+            let budget = match a.opt("--budget").map(str::parse::<usize>) {
+                None => 400,
+                Some(Ok(n)) => n,
+                Some(Err(_)) => return fail("shrink", anyhow::anyhow!("USAGE: --budget needs a number"), 2),
+            };
+            match open_store(&a).and_then(|s| run::shrink(&s, &a.pos[1], budget)) {
+                Ok(v) => {
+                    emit("shrink", true, v, vec![]);
+                    0
+                }
+                Err(e) => fail("shrink", e, 2),
+            }
+        }
         ("replay", 2) => match open_store(&a).and_then(|s| run::replay(&s, &a.pos[1], a.opt("--artifact").map(Path::new))) {
             Ok(v) => {
                 emit("replay", true, v, vec![]);
