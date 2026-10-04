@@ -18,7 +18,7 @@ fn sanitize(s: &str) -> String {
 
 impl Store {
     pub fn open(root: &Path) -> Result<Store> {
-        for d in ["items", "objects", "regressions"] {
+        for d in ["items", "objects", "regressions", "host"] {
             std::fs::create_dir_all(root.join(d)).with_context(|| format!("creating store {}", root.display()))?;
         }
         Ok(Store { root: root.to_path_buf() })
@@ -49,6 +49,17 @@ impl Store {
         let p = self.root.join("items").join(format!("{}.json", sanitize(id)));
         let text = std::fs::read(&p).with_context(|| format!("no item `{id}` in {}", self.root.display()))?;
         Ok(serde_json::from_slice(&text)?)
+    }
+
+    /// Host records: `probe` (HostProbe) and `qualification-<isa>` (EngineQualification).
+    pub fn put_host(&self, name: &str, v: &serde_json::Value) -> Result<()> {
+        let p = self.root.join("host").join(format!("{}.json", sanitize(name)));
+        self.write_atomic(&p, &serde_json::to_vec_pretty(v)?)
+    }
+
+    pub fn get_host(&self, name: &str) -> Option<serde_json::Value> {
+        let p = self.root.join("host").join(format!("{}.json", sanitize(name)));
+        std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok())
     }
 
     fn regression_dir(&self, contract: &Contract, target: &str) -> PathBuf {

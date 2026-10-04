@@ -737,6 +737,7 @@ pub struct Suite {
     pub limits: Limits,
     pub include_regressions: bool,
     pub vary_placement: bool,
+    pub executors: Vec<String>,
 }
 
 pub const MAX_CASES_HARD: u64 = 8192;
@@ -747,8 +748,19 @@ impl Suite {
         if f.schema != "mukoz.suite/1" {
             bail!("unsupported suite schema `{}`", f.schema);
         }
-        if f.executors != ["emulated"] {
-            bail!("REQUIRED_CAPABILITY_UNAVAILABLE: executors {:?} (only `emulated` is implemented)", f.executors);
+        // Accepted combinations (docs/06 6.8): one executor, or `emulated` plus one native executor
+        // (a differential test). Executors never stand in for each other.
+        let known = ["emulated", "native-routine", "native-process"];
+        if let Some(x) = f.executors.iter().find(|x| !known.contains(&x.as_str())) {
+            bail!("REQUIRED_CAPABILITY_UNAVAILABLE: executor `{x}` (known: {})", known.join(", "));
+        }
+        let ok_shape = match f.executors.len() {
+            1 => true,
+            2 => f.executors[0] == "emulated" && f.executors[1] != "emulated",
+            _ => false,
+        };
+        if !ok_shape {
+            bail!("USAGE: executors must be one executor or [\"emulated\", <native executor>] for a differential test, got {:?}", f.executors);
         }
         let dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let seed_text = f.generate.seed.unwrap_or_else(|| "0".into());
@@ -789,6 +801,7 @@ impl Suite {
             },
             include_regressions: f.regressions.include,
             vary_placement,
+            executors: f.executors,
         })
     }
 }

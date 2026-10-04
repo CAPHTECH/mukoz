@@ -15,6 +15,7 @@ pub const EVALUATOR_VERSION: &str = concat!("mukoz ", env!("CARGO_PKG_VERSION"))
 const MAX_ARTIFACT: u64 = 64 << 20;
 const INLINE_FINDINGS: usize = 3;
 const CX_PER_PROPERTY: usize = 3;
+const NATIVE_TIMEOUT_LIMIT: usize = 3;
 
 pub struct Loaded {
     pub suite: Suite,
@@ -132,16 +133,170 @@ fn observed_json(l: &Loaded, case: &Case, obs: &Observation) -> serde_json::Valu
     serde_json::Value::Object(m)
 }
 
-fn platform_json() -> serde_json::Value {
-    json!({
-        "executor": "emulated",
-        "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
-        "engine": emu::ENGINE,
-        "process_isolation": "in-process (worker separation not implemented yet)",
-    })
+/// How the executors of one run were set up (docs/03 3.5, docs/08 8.4 rule 3-4).
+pub struct Platform {
+    pub executors: Vec<String>,
+    pub native: Option<String>,
+    /// Ok(permit) or Err(reason code and detail) for the native executor.
+    pub native_state: Option<Result<crate::policy::Permit, String>>,
+    pub applied_isolation: Vec<&'static str>,
+    pub probe_host: Option<String>,
+    pub policy: Option<(String, String)>,
+}
+
+impl Platform {
+    fn native_ok(&self) -> bool {
+        matches!(self.native_state, Some(Ok(_)))
+    }
+    fn json(&self) -> serde_json::Value {
+        let mut v = json!({
+            "executors": self.executors,
+            "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+        });
+        if self.executors.iter().any(|e| e == "emulated") {
+            v["emulated"] = json!({ "engine": emu::ENGINE, "process_isolation": "in-process (worker separation not implemented yet)" });
+        }
+        if let Some(n) = &self.native {
+            v[n.as_str()] = match &self.native_state {
+                Some(Ok(p)) => json!({
+                    "permitted_by": p.basis,
+                    "isolation_required_by_policy": p.isolation_required,
+                    "isolation_applied": self.applied_isolation,
+                    "probe_host_id": self.probe_host,
+                }),
+                Some(Err(e)) => json!({ "not_run": e }),
+                None => json!(null),
+            };
+        }
+        if let Some((path, digest)) = &self.policy {
+            v["policy"] = json!({ "path": path, "digest": digest });
+        }
+        v
+    }
+}
+
+fn executed_files(l: &Loaded) -> Vec<PathBuf> {
+    if l.modules.is_empty() { vec![l.artifact_path.clone()] } else { l.modules.iter().map(|(_, p)| p.clone()).collect() }
+}
+
+fn platform_for(l: &Loaded, store: &Store, policy_path: Option<&Path>) -> Result<Platform> {
+    let executors = l.suite.executors.clone();
+    let native = executors.iter().find(|e| e.starts_with("native-")).cloned();
+    let mut p = Platform { executors, native: native.clone(), native_state: None, applied_isolation: Vec::new(), probe_host: None, policy: None };
+    let Some(n) = native else { return Ok(p) };
+    let policy = crate::policy::Policy::find(policy_path, &store.root)?;
+    p.policy = policy.as_ref().map(|x| (x.path.display().to_string(), x.digest.clone()));
+    let capable = match n.as_str() {
+        "native-routine" => crate::native::host_can_execute(&l.binding),
+        _ => Err("REQUIRED_CAPABILITY_UNAVAILABLE: native-process is not implemented yet".to_string()),
+    };
+    p.native_state = Some(match capable {
+        Err(e) => Err(e),
+        Ok(()) => {
+            let probe = crate::host::current_probe(store);
+            p.probe_host = probe["host_id"].as_str().map(str::to_string);
+            let mut r = crate::policy::permit(policy.as_ref(), &n, &l.binding.target.text, &executed_files(l), &l.artifact_digest, &probe);
+            if n == "native-routine" && r.is_ok() && !probe["capabilities"]["seccomp_strict"]["confirmed"].as_bool().unwrap_or(false) {
+                r = Err("NATIVE_NOT_PERMITTED: seccomp was not confirmed on this host (required for native-routine, docs/08 8.4)".into());
+            }
+            r
+        }
+    });
+    Ok(p)
+}
+
+fn reason_code(e: &str) -> String {
+    e.split(':').next().unwrap_or(e).to_string()
+}
+
+/// Claims from a native-routine observation: page-granular memory protection cannot establish
+/// the byte-granular memory claim (docs/02 2.3), so a completed run leaves it NOT_EVALUATED.
+fn native_routine_claims(l: &Loaded, case: &Case, obs: &Observation) -> Vec<CaseClaim> {
+    let mut v = judge::judge_case(&l.contract, &l.binding, case, obs);
+    for c in v.iter_mut() {
+        if c.property == "machine.memory.access" && c.eval == Eval::SatisfiedInScope {
+            c.eval = Eval::NotEvaluated;
+            c.reason = Some("REQUIRED_CAPABILITY_UNAVAILABLE".into());
+            c.detail = Some(json!({ "why": "native-routine detects out-of-bounds accesses only at page granularity" }));
+        }
+    }
+    v
+}
+
+fn stop_class(s: &emu::Stop) -> &'static str {
+    use emu::Stop::*;
+    match s {
+        Returned => "returned",
+        BadReturn { .. } => "bad_return",
+        Exited { .. } => "exited",
+        MemoryViolation { .. } | LeftCode { .. } => "fault",
+        InvalidInstruction { .. } => "invalid_instruction",
+        ForbiddenEffect { .. } => "forbidden_effect",
+        UnsupportedSyscall { .. } => "unsupported",
+        OutputLimit { .. } => "output_limit",
+        ReservedRegisterUsed { .. } => "reserved_register",
+        BudgetExhausted { .. } | Timeout { .. } => "nonterminating",
+        EngineError { .. } => "engine_error",
+        SetupError { .. } => "setup_error",
+    }
+}
+
+pub fn differential_property(native: &str) -> String {
+    format!("differential.emulated_vs_{native}")
+}
+
+/// Compare one case across executors (docs/06 6.8). A difference whose cause is unknown is
+/// INCONCLUSIVE with BACKEND_DIVERGENCE (it is not blamed on the subject); a difference that only
+/// reflects what the native executor cannot observe is NOT_EVALUATED for that case.
+fn compare(l: &Loaded, native: &str, e: &Observation, n: &Observation) -> CaseClaim {
+    let prop = differential_property(native);
+    let mk = |eval: Eval, reason: Option<&str>, detail: Option<serde_json::Value>| CaseClaim { property: prop.clone(), eval, reason: reason.map(str::to_string), detail };
+    let (ce, cn) = (stop_class(&e.stop), stop_class(&n.stop));
+    let both = || json!({ "emulated": { "stop": e.stop }, native: { "stop": n.stop } });
+    if matches!(cn, "setup_error" | "engine_error") {
+        return mk(Eval::Inconclusive, Some("NATIVE_EXECUTION_ERROR"), Some(both()));
+    }
+    if matches!(ce, "setup_error" | "engine_error") {
+        return mk(Eval::Inconclusive, Some("EMULATED_EXECUTION_ERROR"), Some(both()));
+    }
+    if ce != cn && (ce == "nonterminating" || cn == "nonterminating") {
+        return mk(Eval::NotEvaluated, Some("BUDGETS_DIFFER"), Some(both()));
+    }
+    if ce == "fault" && cn == "returned" {
+        return mk(Eval::NotEvaluated, Some("BELOW_NATIVE_PAGE_GRANULARITY"), Some(both()));
+    }
+    if ce != cn {
+        return mk(Eval::Inconclusive, Some("BACKEND_DIVERGENCE"), Some(both()));
+    }
+    if ce != "returned" {
+        return mk(Eval::SatisfiedInScope, None, None);
+    }
+    let info = emu::isa_info(l.binding.target.isa);
+    let mut diffs = Vec::new();
+    let mut regs: Vec<String> = l.binding.results.iter().map(|(_, r)| r.clone()).collect();
+    regs.extend(info.callee_saved.iter().map(|r| r.to_string()));
+    regs.sort();
+    regs.dedup();
+    for r in &regs {
+        let (a, b) = (e.regs_out.get(r), n.regs_out.get(r));
+        if a != b {
+            diffs.push(json!({ "register": r, "emulated": a.map(|x| format!("0x{x:016x}")), native: b.map(|x| format!("0x{x:016x}")) }));
+        }
+    }
+    if l.binding.target.isa == crate::spec::Isa::X86_64 && (e.flags_out ^ n.flags_out) & (1 << 10) != 0 {
+        diffs.push(json!({ "flag": "DF", "emulated": e.flags_out >> 10 & 1, native: n.flags_out >> 10 & 1 }));
+    }
+    for (name, a) in &e.regions_out {
+        let b = n.regions_out.get(name);
+        if Some(a) != b {
+            diffs.push(json!({ "region": name, "emulated": expr::hex(a), native: b.map(|x| expr::hex(x)) }));
+        }
+    }
+    if diffs.is_empty() { mk(Eval::SatisfiedInScope, None, None) } else { mk(Eval::Inconclusive, Some("BACKEND_DIVERGENCE"), Some(json!({ "differences": diffs }))) }
 }
 
 pub struct CheckOpts<'a> {
+    pub policy: Option<&'a Path>,
     pub suite: &'a Path,
     pub artifact: Option<&'a Path>,
     pub modules: &'a [(String, PathBuf)],
@@ -170,16 +325,92 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     };
     let mut properties = judge::machine_properties(&l.binding, &l.image.monitors);
     properties.extend(judge::semantic_properties(&l.contract));
+    let mut platform = platform_for(&l, o.store, o.policy)?;
+    let emulated = platform.executors.iter().any(|e| e == "emulated");
+    let differential = emulated && platform.native.is_some();
+    if differential {
+        properties.push(differential_property(platform.native.as_deref().unwrap_or_default()));
+    }
+    let native_wall = match &platform.native_state {
+        Some(Ok(p)) => p.max_wall_ms_per_case.map_or(l.suite.limits.wall_ms_per_case, |z| z.min(l.suite.limits.wall_ms_per_case)),
+        _ => l.suite.limits.wall_ms_per_case,
+    };
 
     let mut per_case: Vec<(String, Vec<CaseClaim>)> = Vec::new();
     let mut observations: Vec<Observation> = Vec::new();
+    let mut divergent: Vec<(usize, Observation)> = Vec::new();
+    let mut native_timeouts = 0usize;
     let mut skipped = 0;
     let total = generated.cases.len();
     for (i, case) in generated.cases.iter().enumerate() {
-        let obs = exec.run(case);
-        let claims = judge::judge_case(&l.contract, &l.binding, case, &obs);
+        let obs_e = if emulated { Some(exec.run(case)) } else { None };
+        // A native case that does not finish costs the whole wall limit; after a few, the rest are
+        // not run (NOT_EVALUATED, recorded) instead of stalling the check.
+        let emulated_nonterminating = obs_e.as_ref().is_some_and(|e| stop_class(&e.stop) == "nonterminating");
+        let native_skip: Option<&str> = if !platform.native_ok() {
+            None
+        } else if native_timeouts >= NATIVE_TIMEOUT_LIMIT {
+            Some("NATIVE_TIMEOUT_LIMIT")
+        } else if emulated_nonterminating {
+            Some("EMULATED_NONTERMINATING")
+        } else {
+            None
+        };
+        let obs_n = if platform.native_ok() && native_skip.is_none() {
+            let r = crate::native::run(&l.image, &l.binding, case, l.suite.vary_placement, native_wall);
+            platform.applied_isolation = r.applied_isolation;
+            if matches!(r.obs.stop, emu::Stop::Timeout { .. }) {
+                native_timeouts += 1;
+            }
+            Some(r.obs)
+        } else {
+            None
+        };
+        let mut claims = match (&obs_e, &obs_n) {
+            (Some(e), _) => judge::judge_case(&l.contract, &l.binding, case, e),
+            (None, Some(n)) => native_routine_claims(&l, case, n),
+            (None, None) => {
+                let why = native_skip.map(str::to_string).or_else(|| platform.native_state.as_ref().and_then(|r| r.as_ref().err()).cloned()).unwrap_or_default();
+                properties
+                    .iter()
+                    .filter(|p| !judge::is_conditional(p))
+                    .map(|p| CaseClaim { property: p.clone(), eval: Eval::NotEvaluated, reason: Some(reason_code(&why)), detail: Some(json!({ "why": why })) })
+                    .collect()
+            }
+        };
+        if differential {
+            let native = platform.native.clone().unwrap_or_default();
+            claims.push(match (&obs_e, &obs_n) {
+                (Some(e), Some(n)) => {
+                    let c = compare(&l, &native, e, n);
+                    if c.eval == Eval::Inconclusive && divergent.len() < CX_PER_PROPERTY {
+                        divergent.push((i, n.clone()));
+                    }
+                    c
+                }
+                _ => {
+                    let why = native_skip.map(str::to_string).or_else(|| platform.native_state.as_ref().and_then(|r| r.as_ref().err()).cloned()).unwrap_or_default();
+                    CaseClaim { property: differential_property(&native), eval: Eval::NotEvaluated, reason: Some(reason_code(&why)), detail: Some(json!({ "why": why })) }
+                }
+            });
+        }
         let failed = claims.iter().any(|c| c.eval == Eval::Violated);
         per_case.push((case.id.clone(), claims));
+        let obs = match (obs_e, obs_n) {
+            (Some(e), _) => e,
+            (None, Some(n)) => n,
+            (None, None) => emu::Observation {
+                stop: emu::Stop::SetupError { error: "not executed".into() },
+                regs_in: Default::default(),
+                regs_out: Default::default(),
+                flags_out: 0,
+                regions_out: Default::default(),
+                recent: Vec::new(),
+                instructions: 0,
+                process: None,
+                monitors: Default::default(),
+            },
+        };
         observations.push(obs);
         if failed && o.fail_fast {
             skipped = total - i - 1;
@@ -235,7 +466,8 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "stop": obs.stop,
                 "detail": c.detail,
                 "recent_instructions": obs.recent,
-                "execution_platform": platform_json(),
+                "execution_platform": platform.json(),
+                "executor": if emulated { "emulated" } else { platform.native.as_deref().unwrap_or_default() },
             });
             o.store.put_item(&cx_id, &item)?;
             if o.store.add_regression(&l.contract, &target, case, &cx_id)? {
@@ -248,13 +480,57 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
         }
     }
 
+    // Divergences: evidence for the differential claim (inspect with `show`).
+    let mut divergences = Vec::new();
+    for (idx, n) in &divergent {
+        let case = &generated.cases[*idx];
+        let e = &observations[*idx];
+        let native = platform.native.clone().unwrap_or_default();
+        let c = per_case[*idx].1.iter().find(|c| c.property == differential_property(&native)).cloned();
+        let dv_id = format!("dv-{}", &sha256_hex(format!("{run_id}{}", case.id).as_bytes())[..12]);
+        let side = |o: &Observation| json!({
+            "stop": o.stop,
+            "registers_out": o.regs_out.iter().map(|(k, v)| (k.clone(), json!(format!("0x{v:016x}")))).collect::<serde_json::Map<_, _>>(),
+            "flags_out": format!("0x{:x}", o.flags_out),
+            "regions_out": o.regions_out.iter().map(|(k, v)| (k.clone(), json!(expr::hex(v)))).collect::<serde_json::Map<_, _>>(),
+        });
+        let item = json!({
+            "kind": "divergence",
+            "id": dv_id,
+            "run_id": run_id,
+            "subject_context": context,
+            "property": differential_property(&native),
+            "reason": c.as_ref().and_then(|c| c.reason.clone()),
+            "detail": c.as_ref().and_then(|c| c.detail.clone()),
+            "case": { "id": case.id, "origin": case.origin, "values": values_json(case), "filler_seed": format!("0x{:016x}", case.filler_seed) },
+            "registers_in": e.regs_in.iter().map(|(k, v)| (k.clone(), json!(format!("0x{v:016x}")))).collect::<serde_json::Map<_, _>>(),
+            "emulated": side(e),
+            native.as_str(): side(n),
+            "recent_instructions_emulated": e.recent,
+            "note": "the cause (subject, binding, ABI, engine or CPU) is not determined; this is not a counterexample against the contract",
+        });
+        o.store.put_item(&dv_id, &item)?;
+        divergences.push(dv_id);
+    }
+    if let Some(s) = summaries.iter_mut().find(|s| s.property.starts_with("differential.")) {
+        s.counterexamples = divergences.clone();
+    }
+
     let completed = per_case.len();
     let failed_cases = per_case.iter().filter(|(_, c)| c.iter().any(|x| x.eval == Eval::Violated)).count();
-    let mut limitations = vec![
-        "enumerated_cases_not_exhaustive".to_string(),
-        "emulated_only_not_native_execution".to_string(),
-        "engine_runs_in_process".to_string(),
-    ];
+    let mut limitations = vec!["enumerated_cases_not_exhaustive".to_string()];
+    if emulated {
+        limitations.push("engine_runs_in_process".into());
+    }
+    match (&platform.native, platform.native_ok()) {
+        (None, _) => limitations.push("emulated_only_not_native_execution".into()),
+        (Some(n), false) => limitations.push(format!("{n}_not_run")),
+        (Some(n), true) if n == "native-routine" => limitations.push("native_routine_memory_checks_page_granular_only".into()),
+        _ => {}
+    }
+    if native_timeouts >= NATIVE_TIMEOUT_LIMIT {
+        limitations.push(format!("native_cases_stopped_after_{NATIVE_TIMEOUT_LIMIT}_timeouts"));
+    }
     if !l.suite.include_regressions {
         limitations.push("regression_cases_excluded".into());
     }
@@ -289,7 +565,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                     json!({ "name": n, "digest": d, "base": m.map(|m| format!("0x{:x}", m.base)), "bytes": m.map(|m| m.size) })
                 }).collect::<Vec<_>>(),
                 "monitors": l.image.monitors.iter().map(|m| json!({ "symbol": m.symbol, "contract": m.contract.id })).collect::<Vec<_>>(),
-                "platform": platform_json(),
+                "platform": platform.json(),
                 "quantification": "enumerated_cases_not_exhaustive",
                 "generator": plan::GENERATOR_VERSION,
                 "cases_planned": total,

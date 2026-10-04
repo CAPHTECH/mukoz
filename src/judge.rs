@@ -290,6 +290,8 @@ pub struct ClaimSummary {
     pub cases_not_evaluated: usize,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub inconclusive_reasons: BTreeMap<String, usize>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub not_evaluated_reasons: BTreeMap<String, usize>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub counterexamples: Vec<String>,
 }
@@ -305,6 +307,7 @@ pub fn aggregate(properties: &[String], per_case: &[(String, Vec<CaseClaim>)], s
             cases_inconclusive: 0,
             cases_not_evaluated: skipped,
             inconclusive_reasons: BTreeMap::new(),
+            not_evaluated_reasons: BTreeMap::new(),
             counterexamples: Vec::new(),
         };
         for (_, claims) in per_case {
@@ -316,7 +319,12 @@ pub fn aggregate(properties: &[String], per_case: &[(String, Vec<CaseClaim>)], s
                         s.cases_inconclusive += 1;
                         *s.inconclusive_reasons.entry(c.reason.clone().unwrap_or_default()).or_default() += 1;
                     }
-                    Eval::NotEvaluated => s.cases_not_evaluated += 1,
+                    Eval::NotEvaluated => {
+                        s.cases_not_evaluated += 1;
+                        if let Some(r) = &c.reason {
+                            *s.not_evaluated_reasons.entry(r.clone()).or_default() += 1;
+                        }
+                    }
                 },
                 None if is_conditional(p) => {}
                 None => s.cases_not_evaluated += 1,
@@ -372,7 +380,11 @@ pub fn admit(claims: &[ClaimSummary], valid_cases: usize, generated: usize, min_
                 let why: Vec<String> = c.inconclusive_reasons.iter().map(|(k, n)| format!("{k}×{n}")).collect();
                 reasons.push(format!("INCONCLUSIVE: {} ({})", c.property, why.join(", ")));
             }
-            Eval::NotEvaluated => reasons.push(format!("NOT_EVALUATED: {}", c.property)),
+            Eval::NotEvaluated if c.not_evaluated_reasons.is_empty() => reasons.push(format!("NOT_EVALUATED: {}", c.property)),
+            Eval::NotEvaluated => {
+                let why: Vec<String> = c.not_evaluated_reasons.iter().map(|(k, n)| format!("{k}×{n}")).collect();
+                reasons.push(format!("NOT_EVALUATED: {} ({})", c.property, why.join(", ")));
+            }
             _ => {}
         }
     }

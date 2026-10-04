@@ -3,8 +3,11 @@
 mod emu;
 mod image;
 mod expr;
+mod host;
 mod judge;
+mod native;
 mod plan;
+mod policy;
 mod run;
 mod spec;
 mod store;
@@ -14,13 +17,13 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 
 const USAGE: &str = "usage:
-  mukoz check <suite.toml> [--artifact <file>] [--module <name>=<file>]... [--fail-fast] [--gate] [--store <dir>]
+  mukoz check <suite.toml> [--artifact <file>] [--module <name>=<file>]... [--fail-fast] [--gate] [--store <dir>] [--policy <policy.toml>]
   mukoz show <id> [--store <dir>]
   mukoz replay <counterexample-id> [--artifact <file>] [--store <dir>]
   mukoz inspect <file>
   mukoz regressions list <suite.toml> [--store <dir>]
   mukoz regressions prune <suite.toml> --case <id> [--store <dir>]
-  mukoz platform show
+  mukoz platform probe | show [--store <dir>]
   mukoz expr check <expression>          (parse and print the normalized form)";
 
 struct Args {
@@ -35,7 +38,7 @@ fn parse_args() -> Result<Args, String> {
     while let Some(x) = it.next() {
         match x.as_str() {
             "--fail-fast" | "--gate" | "--help" | "-h" => a.flags.push(x),
-            "--artifact" | "--store" | "--case" | "--module" => {
+            "--artifact" | "--store" | "--case" | "--module" | "--policy" => {
                 let v = it.next().ok_or(format!("{x} needs a value"))?;
                 a.opts.push((x, v));
             }
@@ -112,6 +115,7 @@ fn real_main() -> i32 {
                 Err(e) => return fail("check", anyhow::anyhow!("USAGE: {e}"), 2),
             };
             let o = run::CheckOpts {
+                policy: a.opt("--policy").map(Path::new),
                 suite: Path::new(&a.pos[1]),
                 artifact: a.opt("--artifact").map(Path::new),
                 modules: &modules,
@@ -152,28 +156,7 @@ fn real_main() -> i32 {
             let p = Path::new(&a.pos[1]);
             match std::fs::read(p) {
                 Ok(b) => {
-                    let format = if b.starts_with(b"\x7fELF") {
-                        "elf"
-                    } else if b.starts_with(&[0xcf, 0xfa, 0xed, 0xfe]) || b.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
-                        "macho"
-                    } else if b.starts_with(b"MZ") {
-                        "pe"
-                    } else {
-                        "raw"
-                    };
-                    emit(
-                        "inspect",
-                        true,
-                        json!({
-                            "path": p.display().to_string(),
-                            "bytes": b.len(),
-                            "sha256": spec::sha256_hex(&b),
-                            "format_guess": format,
-                            "executable_by_mukoz": if format == "raw" { "as a raw routine via a binding" } else { "UNSUPPORTED_FEATURE: only raw routines are implemented" },
-                            "head_hex": expr::hex(&b[..b.len().min(64)]),
-                        }),
-                        vec![],
-                    );
+                    emit("inspect", true, inspect(p, &b), vec![]);
                     0
                 }
                 Err(e) => fail("inspect", e.into(), 2),
@@ -214,26 +197,41 @@ fn real_main() -> i32 {
                 Err(e) => fail("regressions prune", e, 2),
             }
         }
-        ("platform", 2) if a.pos[1] == "show" => {
-            emit(
-                "platform show",
-                true,
-                json!({
-                    "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
-                    "mukoz": run::EVALUATOR_VERSION,
-                    "executors": {
-                        "emulated": { "available": true, "engine": emu::ENGINE, "isas": ["x86_64", "aarch64"] },
-                        "native-routine": { "available": false, "reason": "not implemented" },
-                        "native-process": { "available": false, "reason": "not implemented" },
-                        "translated-process": { "available": false, "reason": "not implemented" },
-                    },
-                    "targets": ["x86_64/raw/sysv-x86_64/none", "aarch64/raw/aapcs64/none", "aarch64/raw/apple-arm64/none"],
-                    "engine_qualification": "not recorded yet",
-                }),
-                vec![],
-            );
-            0
-        }
+        ("platform", 2) if a.pos[1] == "probe" => match open_store(&a) {
+            Ok(st) => {
+                let p = host::probe();
+                if let Err(e) = st.put_host("probe", &p) {
+                    return fail("platform probe", e, 4);
+                }
+                emit("platform probe", true, p, vec![]);
+                0
+            }
+            Err(e) => fail("platform probe", e, 4),
+        },
+        ("platform", 2) if a.pos[1] == "show" => match open_store(&a) {
+            Ok(st) => {
+                let quals: serde_json::Map<String, serde_json::Value> =
+                    ["x86_64", "aarch64"].iter().filter_map(|i| st.get_host(&format!("qualification-{i}")).map(|q| (i.to_string(), q))).collect();
+                emit(
+                    "platform show",
+                    true,
+                    json!({
+                        "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+                        "mukoz": run::EVALUATOR_VERSION,
+                        "probe": st.get_host("probe").unwrap_or(json!(null)),
+                        "engine_qualification": quals,
+                        "targets": {
+                            "routine": ["x86_64/raw/sysv-x86_64/none", "aarch64/raw/aapcs64/none", "aarch64/raw/apple-arm64/none"],
+                            "process": ["x86_64/raw/sysv-x86_64/linux", "x86_64/elf/sysv-x86_64/linux", "aarch64/raw/aapcs64/linux", "aarch64/elf/aapcs64/linux"],
+                        },
+                        "note": "`probe` is null until `mukoz platform probe` (or a check that needs it) ran with this store",
+                    }),
+                    vec![],
+                );
+                0
+            }
+            Err(e) => fail("platform show", e, 4),
+        },
         ("expr", 3) if a.pos[1] == "check" => match expr::parse(&a.pos[2]) {
             Ok(e) => {
                 emit("expr check", true, json!({ "normalized": e.to_string() }), vec![]);
@@ -246,6 +244,54 @@ fn real_main() -> i32 {
             2
         }
     }
+}
+
+/// Static examination only: nothing is executed (docs/07 7.2).
+fn inspect(p: &Path, b: &[u8]) -> serde_json::Value {
+    let mut v = json!({
+        "path": p.display().to_string(),
+        "bytes": b.len(),
+        "sha256": spec::sha256_hex(b),
+        "head_hex": expr::hex(&b[..b.len().min(64)]),
+    });
+    if b.starts_with(b"\x7fELF") {
+        let machine = b.get(18..20).map(|m| u16::from_le_bytes([m[0], m[1]]));
+        let isa = match machine {
+            Some(62) => Some(spec::Isa::X86_64),
+            Some(183) => Some(spec::Isa::Aarch64),
+            _ => None,
+        };
+        v["format"] = json!("elf");
+        match isa {
+            None => v["load"] = json!({ "ok": false, "error": format!("UNSUPPORTED_FEATURE: ELF e_machine {machine:?} (x86_64 = 62 and aarch64 = 183 are supported)") }),
+            Some(isa) => {
+                v["isa"] = json!(if isa == spec::Isa::X86_64 { "x86_64" } else { "aarch64" });
+                v["load"] = match image::Image::elf(b, isa, u64::MAX) {
+                    Ok(img) => json!({
+                        "ok": true,
+                        "target": format!("{}/elf/{}/linux", if isa == spec::Isa::X86_64 { "x86_64" } else { "aarch64" }, if isa == spec::Isa::X86_64 { "sysv-x86_64" } else { "aapcs64" }),
+                        "entry": format!("0x{:x}", img.entry),
+                        "segments": img.segments.iter().map(|s| json!({ "addr": format!("0x{:x}", s.addr), "file_bytes": s.data.len(), "mem_bytes": s.mem_size, "flags": s.label })).collect::<Vec<_>>(),
+                        "use": "as a process: target <isa>/elf/<abi>/linux with [entry] kind = \"elf_entry\" (docs/13)",
+                    }),
+                    Err(e) => {
+                        let m = format!("{e:#}");
+                        json!({ "ok": false, "code": error_code(&m), "error": m })
+                    }
+                };
+            }
+        }
+    } else if b.starts_with(&[0xcf, 0xfa, 0xed, 0xfe]) || b.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
+        v["format"] = json!("macho");
+        v["load"] = json!({ "ok": false, "code": "UNSUPPORTED_FEATURE", "error": "UNSUPPORTED_FEATURE: Mach-O is not loaded yet" });
+    } else if b.starts_with(b"MZ") {
+        v["format"] = json!("pe");
+        v["load"] = json!({ "ok": false, "code": "UNSUPPORTED_FEATURE", "error": "UNSUPPORTED_FEATURE: PE is not loaded" });
+    } else {
+        v["format"] = json!("raw");
+        v["load"] = json!({ "ok": true, "use": "as raw code through a binding: a routine (<isa>/raw/<abi>/none) or a process image (<isa>/raw/<abi>/linux), entry by [entry] offset" });
+    }
+    v
 }
 
 fn main() {

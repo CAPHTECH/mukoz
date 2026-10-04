@@ -468,6 +468,78 @@ struct HookState {
     ring: Vec<(u64, u32)>,
 }
 
+/// One binding region as placed for a routine case. The same placement is used by every
+/// executor so that their results can be compared (docs/06 6.8).
+pub struct RegionSetup {
+    pub name: String,
+    pub map_base: u64,
+    /// Mapped bytes; the last page is past the region (a guard page for native execution).
+    pub map_size: u64,
+    pub addr: u64,
+    pub size: u64,
+    pub access: Access,
+    pub init: Vec<u8>,
+}
+
+pub struct RoutineSetup {
+    pub regions: Vec<RegionSetup>,
+    pub regs_in: BTreeMap<String, u64>,
+}
+
+/// Region placement and initial registers of a routine case, derived only from the binding and
+/// the case (values and filler seed).
+pub fn routine_setup(binding: &Binding, case: &Case, vary_placement: bool) -> Result<RoutineSetup, String> {
+    let info = isa_info(binding.target.isa);
+    let empty = BTreeMap::new();
+    let mut filler = SplitMix64::new(case.filler_seed);
+    let mut placement = SplitMix64::new(case.filler_seed ^ 0x9e37_79b9_7f4a_7c15);
+    let mut regions = Vec::new();
+    let mut addrs: BTreeMap<String, u64> = BTreeMap::new();
+    for (i, r) in binding.regions.iter().enumerate() {
+        let cx = EvalCtx { vars: &case.values, region_addrs: &empty };
+        let size = match expr::eval(&r.size, &cx) {
+            Ok(Value::Bv(_, n)) => n,
+            Ok(v) => return Err(format!("region {} size is {}", r.name, v.ty())),
+            Err(m) => return Err(format!("region {} size: {m}", r.name)),
+        };
+        if size > 1 << 20 {
+            return Err(format!("region {} size {size} exceeds 1 MiB", r.name));
+        }
+        let init = match &r.init {
+            Some(e) => bytes_of(expr::eval(e, &cx).map_err(|m| format!("region {} init: {m}", r.name))?),
+            None => (0..size).map(|_| filler.next() as u8).collect(),
+        };
+        if init.len() as u64 != size {
+            return Err(format!("BINDING_MISMATCH: region {} init has {} bytes but size is {size}", r.name, init.len()));
+        }
+        let map_base = REGION_BASE + i as u64 * REGION_STRIDE;
+        let map_size = page_up(size.max(1) + 16) + PAGE;
+        let addr = if vary_placement {
+            let pad = placement.next() % 16;
+            map_base + map_size - PAGE - size - pad
+        } else {
+            map_base + map_size - PAGE - size.div_ceil(16) * 16
+        };
+        addrs.insert(r.name.clone(), addr);
+        regions.push(RegionSetup { name: r.name.clone(), map_base, map_size, addr, size, access: r.access, init });
+    }
+    let mut regs_in = BTreeMap::new();
+    for g in info.gprs {
+        regs_in.insert(g.to_string(), filler.next());
+    }
+    let cx = EvalCtx { vars: &case.values, region_addrs: &addrs };
+    for (reg, e) in &binding.arguments {
+        let v = match expr::eval(e, &cx).map_err(|m| format!("argument {reg}: {m}"))? {
+            Value::Bv(w, x) if w < 64 => x | (filler.next() & !expr::mask(w)),
+            Value::Bv(_, x) => x,
+            Value::Bool(b) => b as u64,
+            Value::Bytes(_) => return Err(format!("argument {reg} evaluated to bytes")),
+        };
+        regs_in.insert(reg.clone(), v);
+    }
+    Ok(RoutineSetup { regions, regs_in })
+}
+
 pub struct Executor<'a> {
     pub image: &'a Image,
     pub contract: &'a Contract,
@@ -576,68 +648,22 @@ impl Executor<'_> {
         let empty = BTreeMap::new();
         let mut addrs: BTreeMap<String, u64> = BTreeMap::new();
         let mut placed: Vec<PlacedRegion> = Vec::new();
-        let mut filler = SplitMix64::new(case.filler_seed);
         let mut regs_in: BTreeMap<String, u64> = BTreeMap::new();
         let entry_sp;
         let mut proc_state: Option<Proc> = None;
 
         if !process {
             // Regions: values from the case, addresses fixed per region index.
-            let mut inits: Vec<(u64, Vec<u8>)> = Vec::new();
-            // Separate stream so that varying placement does not change register filler values.
-            let mut placement = SplitMix64::new(case.filler_seed ^ 0x9e37_79b9_7f4a_7c15);
-            for (i, r) in self.binding.regions.iter().enumerate() {
-                let cx = EvalCtx { vars: &case.values, region_addrs: &empty };
-                let size = match expr::eval(&r.size, &cx) {
-                    Ok(Value::Bv(_, n)) => n,
-                    Ok(v) => return Err(format!("region {} size is {}", r.name, v.ty())),
-                    Err(m) => return Err(format!("region {} size: {m}", r.name)),
-                };
-                if size > 1 << 20 {
-                    return Err(format!("region {} size {size} exceeds 1 MiB", r.name));
-                }
-                let init = match &r.init {
-                    Some(e) => bytes_of(expr::eval(e, &cx).map_err(|m| format!("region {} init: {m}", r.name))?),
-                    // Uninitialized: random bytes, never zeros.
-                    None => (0..size).map(|_| filler.next() as u8).collect(),
-                };
-                if init.len() as u64 != size {
-                    return Err(format!("BINDING_MISMATCH: region {} init has {} bytes but size is {size}", r.name, init.len()));
-                }
-                let map_base = REGION_BASE + i as u64 * REGION_STRIDE;
-                let map_size = page_up(size.max(1) + 16) + PAGE;
-                let addr = if self.vary_placement {
-                    // Start at any of the 16 alignments below 16 (end position varies accordingly).
-                    let pad = placement.next() % 16;
-                    map_base + map_size - PAGE - size - pad
-                } else {
-                    // The data starts 16-byte aligned near the end of the mapping.
-                    map_base + map_size - PAGE - size.div_ceil(16) * 16
-                };
-                uc.mem_map(map_base, map_size as usize, Permission::READ | Permission::WRITE).map_err(ue)?;
-                inits.push((addr, init));
-                addrs.insert(r.name.clone(), addr);
-                placed.push(PlacedRegion { name: r.name.clone(), addr, size, access: r.access });
+            let rs = routine_setup(self.binding, case, self.vary_placement)?;
+            for r in &rs.regions {
+                uc.mem_map(r.map_base, r.map_size as usize, Permission::READ | Permission::WRITE).map_err(ue)?;
             }
-            for (addr, b) in &inits {
-                uc.mem_write(*addr, b).map_err(ue)?;
+            for r in &rs.regions {
+                uc.mem_write(r.addr, &r.init).map_err(ue)?;
+                addrs.insert(r.name.clone(), r.addr);
+                placed.push(PlacedRegion { name: r.name.clone(), addr: r.addr, size: r.size, access: r.access });
             }
-
-            // Registers: filler for everything, then arguments.
-            for g in info.gprs {
-                regs_in.insert(g.to_string(), filler.next());
-            }
-            let cx = EvalCtx { vars: &case.values, region_addrs: &addrs };
-            for (reg, e) in &self.binding.arguments {
-                let v = match expr::eval(e, &cx).map_err(|m| format!("argument {reg}: {m}"))? {
-                    // Narrow arguments: the ABI leaves upper bits unspecified, so fill them.
-                    Value::Bv(w, x) if w < 64 => x | (filler.next() & !expr::mask(w)),
-                    Value::Bv(_, x) => x,
-                    Value::Bool(b) => b as u64,
-                    Value::Bytes(_) => return Err(format!("argument {reg} evaluated to bytes")),
-                };
-                regs_in.insert(reg.clone(), v);
-            }
+            regs_in = rs.regs_in;
             match isa {
                 Isa::X86_64 => {
                     // Call just happened: [rsp] = return address, rsp ≡ 8 (mod 16).
