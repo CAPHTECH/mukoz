@@ -204,6 +204,12 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     if skipped > 0 {
         limitations.push(format!("fail_fast_skipped_{skipped}_cases"));
     }
+    if let Some(n) = generated.stats.boundary_product_exceeded_at {
+        limitations.push(format!(
+            "boundary_product_reduced_to_one_variable_at_a_time: product reached {n} cases, over max_cases/2 = {}",
+            (l.suite.limits.max_cases / 2).max(1)
+        ));
+    }
     if generated.stats.excluded_by_requires > 0 {
         limitations.push(format!("requires_excluded_{}_of_{generated_total}_generated_cases", generated.stats.excluded_by_requires));
     }
@@ -229,6 +235,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "cases_failed": failed_cases,
                 "cases_skipped": skipped,
                 "plan_stats": generated.stats,
+                "input_summary": plan::input_summary(&generated.cases),
                 "regression_cases_run": reg_ids.len().min(completed),
                 "new_regression_cases": new_regressions,
             },

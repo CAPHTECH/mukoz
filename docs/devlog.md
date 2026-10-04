@@ -26,3 +26,5 @@
 | 2026-10-04 | 4 | gcc 修正課題 A/B: 両方 PASS。RA は手で逆アセンブルして特定し Mukoz は確認1回のみ。計36件・誤った合格0・REJECT 0 |
 | 2026-10-04 | 4→R | 契約作成の試験(エージェントが spec と docs だけで契約・Binding・Suite を書く)hex_encode: 作成された契約は私の参照を ACCEPT・変異を REJECT(1回)。報告された問題: (1) requires が 528 中 525 を捨てても ACCEPT(3件) (2) bytes 変数の `max`/`bytes` 不正値が黙って無視 (3) `len` > max_len が黙って切り詰め (4) docs と実装の食い違い多数 |
 | 2026-10-04 | R | 再設計: (1) 有効ケースが下限 min(100, 生成数/4) 未満なら HOLD `LOW_ADMITTED_CASES`、`[limits] min_admitted_cases` で明示上書き、捨てた件数を limitations に常に出す (2)(3) 型に合わない生成器項目・値域・max_len 超過はエラー (4) docs/04 §4.10・docs/07 に 0.1 の実装範囲を固定。受け入れテスト2本追加、(1) は規則を無効化すると落ちることを確認 |
+| 2026-10-04 | 4→R | 契約作成の試験 memmove: 作成契約は参照 ACCEPT・変異 REJECT(1回)。追加の報告: 境界値の直積の黙った縮小、生成入力が見えない、部分範囲の権限・配置生成・let がない |
+| 2026-10-04 | R | 再設計: 直積の縮小を plan_stats.boundary_mode と limitations に出す。scope.input_summary(変数ごとの生成範囲)を追加。受け入れテスト1本、報告を消すと落ちることを確認。設計の不足4件を docs/11 に未解決として記録 |

@@ -53,6 +53,10 @@ pub struct PlanStats {
     pub excluded_by_requires: usize,
     pub requires_eval_errors: usize,
     pub duplicate_inputs: usize,
+    /// `product`, `one_at_a_time` (product exceeded max_cases/2) or `none`.
+    pub boundary_mode: &'static str,
+    /// Product size reached when it exceeded the budget (a lower bound of the full product).
+    pub boundary_product_exceeded_at: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -321,7 +325,7 @@ pub struct Generated {
 pub fn generate(contract: &Contract, suite: &Suite, regressions: Vec<Case>, regression_na: usize) -> Result<Generated> {
     let slots = slots(contract, suite)?;
     let mut rng = SplitMix64::new(suite.seed);
-    let mut stats = PlanStats { regression_not_applicable: regression_na, ..Default::default() };
+    let mut stats = PlanStats { regression_not_applicable: regression_na, boundary_mode: "none", ..Default::default() };
     let mut cases: Vec<Case> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let empty = BTreeMap::new();
@@ -367,6 +371,7 @@ pub fn generate(contract: &Contract, suite: &Suite, regressions: Vec<Case>, regr
         let mut partial: Vec<ValEnv> = vec![ValEnv::new()];
         let budget = (suite.limits.max_cases / 2).max(1) as usize;
         let mut too_big = false;
+        stats.boundary_mode = "product";
         for s in &slots {
             let mut next = Vec::new();
             for env in &partial {
@@ -378,6 +383,8 @@ pub fn generate(contract: &Contract, suite: &Suite, regressions: Vec<Case>, regr
             }
             if next.len() > budget {
                 too_big = true;
+                stats.boundary_mode = "one_at_a_time";
+                stats.boundary_product_exceeded_at = Some(next.len());
                 break;
             }
             partial = next;
@@ -447,3 +454,52 @@ mod tests {
         assert_eq!(r.next(), 0x6e78_9e6a_a1b9_65f4);
     }
 }
+
+/// What the generated inputs actually covered, per variable, so a suite author can see
+/// whether the edge cases they intended were produced without writing probe contracts.
+pub fn input_summary(cases: &[Case]) -> serde_json::Value {
+    use std::collections::BTreeSet;
+    let mut keys: BTreeSet<&String> = BTreeSet::new();
+    for c in cases {
+        keys.extend(c.values.keys());
+    }
+    let mut out = serde_json::Map::new();
+    for k in keys {
+        let vals: Vec<&Value> = cases.iter().filter_map(|c| c.values.get(k)).collect();
+        let entry = match vals.first() {
+            Some(Value::Bool(_)) => {
+                let t = vals.iter().filter(|v| matches!(v, Value::Bool(true))).count();
+                serde_json::json!({"type": "bool", "true": t, "false": vals.len() - t})
+            }
+            Some(Value::Bv(w, _)) => {
+                let xs: Vec<u64> = vals.iter().filter_map(|v| if let Value::Bv(_, x) = v { Some(*x) } else { None }).collect();
+                let distinct: BTreeSet<u64> = xs.iter().copied().collect();
+                let w = *w as u64;
+                let top = if w == 64 { u64::MAX } else { (1u64 << w) - 1 };
+                serde_json::json!({
+                    "type": format!("bv{w}"),
+                    "min": format!("0x{:x}", xs.iter().min().unwrap()),
+                    "max": format!("0x{:x}", xs.iter().max().unwrap()),
+                    "distinct": distinct.len(),
+                    "zero": xs.iter().filter(|x| **x == 0).count(),
+                    "all_ones": xs.iter().filter(|x| **x == top).count(),
+                })
+            }
+            Some(Value::Bytes(_)) => {
+                let ls: Vec<usize> = vals.iter().filter_map(|v| if let Value::Bytes(b) = v { Some(b.len()) } else { None }).collect();
+                let distinct: BTreeSet<usize> = ls.iter().copied().collect();
+                serde_json::json!({
+                    "type": "bytes",
+                    "len_min": ls.iter().min().unwrap(),
+                    "len_max": ls.iter().max().unwrap(),
+                    "distinct_lens": distinct.len(),
+                    "empty": ls.iter().filter(|l| **l == 0).count(),
+                })
+            }
+            None => continue,
+        };
+        out.insert(k.clone(), entry);
+    }
+    serde_json::Value::Object(out)
+}
+

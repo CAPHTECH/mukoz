@@ -226,3 +226,20 @@ fn inapplicable_generator_fields_are_errors() {
     assert!(v["errors"].to_string().contains("does not apply"), "{v:#}");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// Found by an agent writing a contract: a boundary product over the budget silently fell back
+// to one-variable-at-a-time. The fallback must be visible in limitations and plan_stats.
+#[test]
+fn boundary_product_fallback_is_reported() {
+    let vals: Vec<String> = (0..80).map(|i| format!("\"{i}\"")).collect();
+    let extra = format!("\n[generate.vars.a]\nvalues = [{}]\n\n[generate.vars.b]\nvalues = [{}]\n", vals.join(", "), vals.join(", "));
+    let (dir, suite) = add64_variant("", &extra);
+    let v = check(&suite, &fx("add64"), &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    let scope = &v["data"]["assessment"]["scope"];
+    assert_eq!(scope["plan_stats"]["boundary_mode"], "one_at_a_time", "{scope:#}");
+    assert!(v["data"]["assessment"]["limitations"].to_string().contains("boundary_product_reduced"), "{:#}", v["data"]["assessment"]);
+    // The input summary shows what was generated.
+    assert_eq!(scope["input_summary"]["input.a"]["type"], "bv64", "{scope:#}");
+    let _ = std::fs::remove_dir_all(dir);
+}

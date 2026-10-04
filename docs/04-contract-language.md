@@ -425,6 +425,9 @@ AIが生成と検査を繰り返すとき、前に見つかった失敗が再発
 | `executors` | `["emulated"]` のみ |
 | `[generate]` | `seed`・`boundary`(`product` / `none`)・`random_cases` |
 | `[generate.vars.<名前>]` | `values`: 追加の値(bv は 10進/0x16進の文字列、bytes は16進文字列。`hex"..."` 形式ではない)。`len`: bytes の長さの式(前の変数を参照可。例 `len(input.src) + len(input.src)`)。`max`: bv の上限の式(含む。前の変数を参照可)。`bytes`: bytes の値域 `nonzero` / `ascii`。型に合わない項目はエラー |
+| 境界値 | bv は `max` があれば {0, 1, max/2, max−1, max}、なければ 4.7 の既定。bytes は `len` があればその長さ1つ、なければ {0, 1, max_len/2, max_len}。これに `values` を足す。直積が `max_cases/2` を超えたら「1変数ずつ境界値・他はランダム」に切り替え、`plan_stats.boundary_mode = "one_at_a_time"` と `limitations` に出す |
+| 生成された入力の確認 | `data.assessment.scope.input_summary` に変数ごとの範囲(bv: min・max・異なる値の数・0 と全1の件数、bytes: 長さの min・max・異なる長さの数・空の件数、bool: 件数)を出す |
+| 停止しない | `must_return` で命令数の上限に達したら HOLD(`BUDGET_EXHAUSTED`)。停止しないことは有限の実行では示せないため REJECT にしない(I1) |
 | 依存する生成 | `len` / `max` が参照する変数を先に生成する(循環はエラー)。`len` が契約の `max_len` を超えたら `PLAN_ERROR`(切り詰めない) |
 | `[limits]` | `instructions_per_case`・`wall_ms_per_case`・`max_cases`(上限 8192)・`min_admitted_cases`。`guest_memory_bytes` / `trace_bytes_per_case` は未実装 |
 | 領域の配置の生成(alignment・相対位置) | 未実装。各領域は別々の固定番地に置く |
