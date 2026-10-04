@@ -364,6 +364,32 @@ value = "rax"
 values = ["3", "4", "15", "16", "17", "0xfffffffe00000001", "0xfffffffe00000000", "0x3fffffffffffffff", "0x4000000000000000", "1000000"]
 ''')
 
+T["base64"] = dict(
+ spec="void base64_encode(uint8_t *dst, const uint8_t *src, uint64_t n): write the standard base64 encoding (RFC 4648 alphabet A-Z a-z 0-9 + /, with '=' padding) of src[0..n) to dst. dst points to exactly 4*ceil(n/3) writable bytes, src to n readable bytes. No terminating NUL.",
+ modifies='modifies = ["dst"]',
+ contract='\n[inputs]\nsrc = { type = "bytes", max_len = 96 }\n\n[state]\ndst = { type = "bytes", max_len = 128 }\n\n[[requires]]\nid = "dst_len"\nexpr = "len(before.dst) == udiv(len(input.src) + bv64(2), bv64(3)) * bv64(4)"\n\n[[ensures]]\nid = "char0"\nexpr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g)] == ite(ult(lshr(input.src[(g + g + g)], bv8(2)), bv8(26)), lshr(input.src[(g + g + g)], bv8(2)) + bv8(65), ite(ult(lshr(input.src[(g + g + g)], bv8(2)), bv8(52)), lshr(input.src[(g + g + g)], bv8(2)) + bv8(71), ite(ult(lshr(input.src[(g + g + g)], bv8(2)), bv8(62)), lshr(input.src[(g + g + g)], bv8(2)) - bv8(4), ite(lshr(input.src[(g + g + g)], bv8(2)) == bv8(62), bv8(43), bv8(47)))))"\n\n[[ensures]]\nid = "char1"\nexpr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g) + bv64(1)] == ite(ult((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))), bv8(26)), (shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) + bv8(65), ite(ult((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))), bv8(52)), (shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) + bv8(71), ite(ult((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))), bv8(62)), (shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) - bv8(4), ite((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) == bv8(62), bv8(43), bv8(47)))))"\n\n[[ensures]]\nid = "char2"\nexpr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g) + bv64(2)] == ite(ult((g + g + g) + bv64(1), len(input.src)), ite(ult((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))), bv8(26)), (shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) + bv8(65), ite(ult((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))), bv8(52)), (shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) + bv8(71), ite(ult((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))), bv8(62)), (shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) - bv8(4), ite((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) == bv8(62), bv8(43), bv8(47))))), bv8(61))"\n\n[[ensures]]\nid = "char3"\nexpr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g) + bv64(3)] == ite(ult((g + g + g) + bv64(2), len(input.src)), ite(ult((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)), bv8(26)), (ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) + bv8(65), ite(ult((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)), bv8(52)), (ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) + bv8(71), ite(ult((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)), bv8(62)), (ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) - bv8(4), ite((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) == bv8(62), bv8(43), bv8(47))))), bv8(61))"\n\n[[ensures]]\nid = "length"\nexpr = "len(after.dst) == len(before.dst)"\n',
+ binding='''
+[arguments]
+rdi = "addr(dst)"
+rsi = "addr(src)"
+rdx = "len(input.src)"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(input.src)"
+init = "input.src"
+access = "r"
+''',
+ suite_extra='''
+[generate.vars.dst]
+len = "udiv(len(input.src) + bv64(2), bv64(3)) * bv64(4)"
+''')
+
 for name, t in T.items():
     d = os.path.join("tasks", name)
     os.makedirs(d, exist_ok=True)
@@ -388,7 +414,7 @@ A64_ABI = ("Target CPU: AArch64 (ARMv8-A, little-endian). Calling convention: AA
            "Use only base integer A64 instructions (no SIMD/FP). The routine must not make system calls and must only touch the memory "
            "described below (plus its own stack below the incoming sp).")
 A64_REG = {"rdi": "x0", "rsi": "x1", "rdx": "x2", "rcx": "x3", "r8": "x4", "r9": "x5", "rax": "x0"}
-A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode"]
+A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64"]
 for name in A64_TASKS:
     t = T[name]
     d = os.path.join("tasks", name + "_a64")

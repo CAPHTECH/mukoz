@@ -52,6 +52,7 @@ class Asm:
     def b(self, target): self.items.append(("b", target))
     def bcond(self, c, target): self.items.append(("bc", c, target))
     def cbz(self, t, target): self.items.append(("cbz", t, target))
+    def bl(self, target): self.items.append(("bl", target))
 
     def bytes(self):
         out = []
@@ -60,7 +61,9 @@ class Asm:
                 out.append(it)
                 continue
             rel = self.labels[it[-1]] - idx
-            if it[0] == "b":
+            if it[0] == "bl":
+                out.append(0x94000000 | (rel & 0x3FFFFFF))
+            elif it[0] == "b":
                 out.append(0x14000000 | (rel & 0x3FFFFFF))
             elif it[0] == "bc":
                 out.append(0x54000000 | ((rel & 0x7FFFF) << 5) | it[1])
@@ -116,7 +119,38 @@ def hex_encode(mutant=False):
     return a.bytes()
 
 
-MUTANTS = {"count_byte": "widecmp", "memmove": "forward_only", "isqrt": "bit30", "hex_encode": "upper"}
+def lsl_i(d, n, s, sf=1):
+    w = 64 if sf else 32
+    return ubfm(d, n, (w - s) % w, w - 1 - s, sf)
+
+
+def base64(mutant=False):
+    a = Asm()
+    a(mov_r(15, 30), movz(3, 0), movz(4, 0))
+    a.label("loop"); a(subs_r(5, 2, 3)); a.bcond(EQ, "done")
+    a(ldrb_r(6, 1, 3), movz(7, 0, 0), movz(8, 0, 0), cmp_i(5, 1)); a.bcond(LS, "l1")
+    a(add_i(9, 3, 1), ldrb_r(7, 1, 9), cmp_i(5, 2)); a.bcond(LS, "l1")
+    a(add_i(9, 3, 2), ldrb_r(8, 1, 9))
+    a.label("l1")
+    a(lsr_i(10, 6, 2, 0)); a.bl("enc"); a(strb_r(11, 0, 4), add_i(4, 4, 1))
+    a(ubfx(10, 6, 0, 2, 0), lsl_i(10, 10, 4, 0), lsr_i(12, 7, 4, 0), orr_r(10, 10, 12, 0)); a.bl("enc")
+    a(strb_r(11, 0, 4), add_i(4, 4, 1))
+    a(movz(11, 61, 0), cmp_i(5, 1)); a.bcond(LS, "s2")
+    a(ubfx(10, 7, 0, 4, 0), lsl_i(10, 10, 2, 0), lsr_i(12, 8, 6, 0), orr_r(10, 10, 12, 0)); a.bl("enc")
+    a.label("s2"); a(strb_r(11, 0, 4), add_i(4, 4, 1))
+    a(movz(11, 61, 0), cmp_i(5, 1 if mutant else 2)); a.bcond(LS, "s3")
+    a(ubfx(10, 8, 0, 6, 0)); a.bl("enc")
+    a.label("s3"); a(strb_r(11, 0, 4), add_i(4, 4, 1), add_i(3, 3, 3), cmp_i(5, 3)); a.bcond(HI, "loop")
+    a.label("done"); a(mov_r(30, 15), RET)
+    a.label("enc")
+    a(add_i(11, 10, 65, 0), add_i(12, 10, 71, 0), cmp_i(10, 26, 0), csel(11, 12, 11, HS, 0))
+    a(sub_i(12, 10, 4, 0), cmp_i(10, 52, 0), csel(11, 12, 11, HS, 0))
+    a(movz(12, 43, 0), cmp_i(10, 62, 0), csel(11, 12, 11, HS, 0))
+    a(movz(12, 47, 0), cmp_i(10, 63, 0), csel(11, 12, 11, HS, 0), RET)
+    return a.bytes()
+
+
+MUTANTS = {"base64": "pad", "count_byte": "widecmp", "memmove": "forward_only", "isqrt": "bit30", "hex_encode": "upper"}
 
 if __name__ == "__main__":
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bin")

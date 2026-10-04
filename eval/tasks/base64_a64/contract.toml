@@ -1,0 +1,39 @@
+schema = "mukoz.contract/1"
+id = "task.base64"
+boundary = "routine"
+modifies = ["dst"]
+[inputs]
+src = { type = "bytes", max_len = 96 }
+
+[state]
+dst = { type = "bytes", max_len = 128 }
+
+[[requires]]
+id = "dst_len"
+expr = "len(before.dst) == udiv(len(input.src) + bv64(2), bv64(3)) * bv64(4)"
+
+[[ensures]]
+id = "char0"
+expr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g)] == ite(ult(lshr(input.src[(g + g + g)], bv8(2)), bv8(26)), lshr(input.src[(g + g + g)], bv8(2)) + bv8(65), ite(ult(lshr(input.src[(g + g + g)], bv8(2)), bv8(52)), lshr(input.src[(g + g + g)], bv8(2)) + bv8(71), ite(ult(lshr(input.src[(g + g + g)], bv8(2)), bv8(62)), lshr(input.src[(g + g + g)], bv8(2)) - bv8(4), ite(lshr(input.src[(g + g + g)], bv8(2)) == bv8(62), bv8(43), bv8(47)))))"
+
+[[ensures]]
+id = "char1"
+expr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g) + bv64(1)] == ite(ult((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))), bv8(26)), (shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) + bv8(65), ite(ult((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))), bv8(52)), (shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) + bv8(71), ite(ult((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))), bv8(62)), (shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) - bv8(4), ite((shl(input.src[(g + g + g)] & bv8(3), bv8(4)) | lshr(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)), bv8(4))) == bv8(62), bv8(43), bv8(47)))))"
+
+[[ensures]]
+id = "char2"
+expr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g) + bv64(2)] == ite(ult((g + g + g) + bv64(1), len(input.src)), ite(ult((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))), bv8(26)), (shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) + bv8(65), ite(ult((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))), bv8(52)), (shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) + bv8(71), ite(ult((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))), bv8(62)), (shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) - bv8(4), ite((shl(ite(ult((g + g + g) + bv64(1), len(input.src)), input.src[(g + g + g) + bv64(1)], bv8(0)) & bv8(15), bv8(2)) | lshr(ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)), bv8(6))) == bv8(62), bv8(43), bv8(47))))), bv8(61))"
+
+[[ensures]]
+id = "char3"
+expr = "forall g in bv64(0)..udiv(len(input.src) + bv64(2), bv64(3)): after.dst[(g + g + g + g) + bv64(3)] == ite(ult((g + g + g) + bv64(2), len(input.src)), ite(ult((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)), bv8(26)), (ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) + bv8(65), ite(ult((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)), bv8(52)), (ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) + bv8(71), ite(ult((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)), bv8(62)), (ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) - bv8(4), ite((ite(ult((g + g + g) + bv64(2), len(input.src)), input.src[(g + g + g) + bv64(2)], bv8(0)) & bv8(63)) == bv8(62), bv8(43), bv8(47))))), bv8(61))"
+
+[[ensures]]
+id = "length"
+expr = "len(after.dst) == len(before.dst)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

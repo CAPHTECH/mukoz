@@ -133,6 +133,13 @@ def t_isqrt(rng):
     want = math.isqrt(x)
     return [], [x], lambda r: None if r["rax"] == want else f"rax={r['rax']} want {want} (x={x:#x})"
 
+def t_base64(rng):
+    import base64
+    n = rng.choice([0, 1, 2, 3, 4, 5, 96, rng.randrange(0, 97)])
+    src = rbytes(rng, n); dst = rbytes(rng, 4 * ((n + 2) // 3))
+    want = base64.b64encode(src)
+    return [dst, src], ["p0", "p1", n], lambda r: None if r["bufs"][0] == want else f"dst wrong (n={n}): {r['bufs'][0][-8:]!r} want {want[-8:]!r}"
+
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
 def judge_a64(task, binary, cases, seed):

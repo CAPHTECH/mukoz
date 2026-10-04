@@ -1,0 +1,14 @@
+schema = "mukoz.suite/1"
+id = "task.base64_a64"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "base64"
+random_cases = 1024
+
+[generate.vars.dst]
+len = "udiv(len(input.src) + bv64(2), bv64(3)) * bv64(4)"
+
+[limits]
+instructions_per_case = 200000
