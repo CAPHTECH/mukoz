@@ -303,6 +303,12 @@ def judge_a64(task, binary, cases, seed):
             fails.append((i, f"{e.kind}: {e}")); continue
         msg = "callee-saved register or sp changed" if not r["saved"] else check(r)
         if msg: fails.append((i, msg))
+        if len(fails) >= 20:
+            # The verdict is decided; the pure-Python interpreter is too slow to run the rest
+            # (a looping submission costs 2M steps per case). `failed` is then a lower bound.
+            ran = i + 1
+            return {"task": task, "binary": binary, "seed": seed, "cases": ran, "stopped_early": True, "passed": ran - len(fails),
+                    "failed": len(fails), "verdict": "FAIL", "first_failures": fails[:5]}
     return {"task": task, "binary": binary, "seed": seed, "cases": cases, "passed": cases - len(fails),
             "failed": len(fails), "verdict": "PASS" if not fails else "FAIL", "first_failures": fails[:5]}
 
