@@ -1,0 +1,20 @@
+schema = "mukoz.binding/1"
+id = "arith.sum3@aarch64-aapcs64"
+contract = "arith.sum3"
+target = "aarch64/raw/aapcs64/none"
+link = "link.aarch64.toml"
+
+[entry]
+kind = "symbol"
+symbol = "main.sum3"
+
+[arguments]
+x0 = "input.a"
+x1 = "input.b"
+x2 = "input.c"
+
+[results]
+value = "x0"
+
+[completion]
+kind = "return_to_sentinel"

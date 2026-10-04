@@ -1,0 +1,27 @@
+schema = "mukoz.binding/1"
+id = "proc.todo@x86_64.elf"
+contract = "proc.todo"
+target = "x86_64/elf/sysv-x86_64/linux"
+
+[entry]
+kind = "elf_entry"
+
+[process]
+argv0 = "todo"
+argv = ['ite(input.op == bv8(0), b"add", ite(input.op == bv8(1), b"list", ite(input.op == bv8(2), b"clear", b"bogus")))', "input.text"]
+argc = "input.nargs"
+
+[files.db]
+path = "todo.db"
+init = "before.db"
+exists = "before.db_exists"
+observe_as = "after.db"
+exists_as = "after.db_exists"
+
+[results]
+code = "exit_status"
+out = "stdout"
+err = "stderr"
+
+[completion]
+kind = "exit"

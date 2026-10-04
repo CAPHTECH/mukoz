@@ -1,6 +1,7 @@
 //! Claims, aggregation, admission and diagnostics (docs/06).
 
 use crate::emu::{self, Observation, Stop};
+use crate::image::Monitor;
 use crate::expr::{self, EvalCtx, Ty, Value};
 use crate::plan::Case;
 use crate::spec::{Binding, Contract, Isa};
@@ -26,20 +27,39 @@ pub struct CaseClaim {
     pub detail: Option<serde_json::Value>,
 }
 
-pub fn machine_properties(binding: &Binding) -> Vec<String> {
-    let mut v = vec![
-        "machine.returned".to_string(),
-        "machine.abi.callee_saved".to_string(),
-        "machine.memory.access".to_string(),
-        "effects.no_forbidden".to_string(),
-    ];
-    if binding.target.isa == Isa::X86_64 {
+pub fn machine_properties(binding: &Binding, monitors: &[Monitor]) -> Vec<String> {
+    let mut v = if binding.target.is_process() {
+        vec![
+            "machine.exited".to_string(),
+            "machine.memory.access".to_string(),
+            "effects.no_forbidden".to_string(),
+            "effects.output_within_limit".to_string(),
+        ]
+    } else {
+        vec![
+            "machine.returned".to_string(),
+            "machine.abi.callee_saved".to_string(),
+            "machine.memory.access".to_string(),
+            "effects.no_forbidden".to_string(),
+        ]
+    };
+    if !binding.target.is_process() && binding.target.isa == Isa::X86_64 {
         v.push("machine.abi.flags".to_string());
     }
     if binding.target.abi == "apple-arm64" {
         v.push("machine.abi.reserved".to_string());
     }
+    for m in monitors {
+        for k in ["requires", "ensures", "abi"] {
+            v.push(format!("link.{}.{k}", m.symbol));
+        }
+    }
     v
+}
+
+/// Properties checked only in the cases that exercise them (boundary monitors).
+pub fn is_conditional(property: &str) -> bool {
+    property.starts_with("link.")
 }
 
 pub fn semantic_properties(contract: &Contract) -> Vec<String> {
@@ -60,9 +80,12 @@ fn claim(property: &str, eval: Eval, reason: Option<&str>) -> CaseClaim {
 pub fn judge_case(contract: &Contract, binding: &Binding, case: &Case, obs: &Observation) -> Vec<CaseClaim> {
     use Eval::*;
     let mut out = Vec::new();
-    let returned = matches!(obs.stop, Stop::Returned);
+    let process = binding.target.is_process();
+    let returned = matches!(obs.stop, Stop::Returned | Stop::Exited { .. });
     let stopped_reason: Option<&str> = match &obs.stop {
-        Stop::Returned => None,
+        Stop::Returned | Stop::Exited { .. } => None,
+        Stop::UnsupportedSyscall { .. } => Some("UNSUPPORTED_DURING_RUN"),
+        Stop::OutputLimit { .. } => Some("OUTPUT_LIMIT"),
         Stop::BadReturn { .. } => Some("BAD_RETURN"),
         Stop::MemoryViolation { .. } => Some("STOPPED_BY_MEMORY_VIOLATION"),
         Stop::LeftCode { .. } => Some("LEFT_CODE_REGION"),
@@ -75,15 +98,29 @@ pub fn judge_case(contract: &Contract, binding: &Binding, case: &Case, obs: &Obs
         Stop::SetupError { .. } => Some("SETUP_ERROR"),
     };
 
-    // machine.returned
-    out.push(match &obs.stop {
-        Stop::Returned => claim("machine.returned", SatisfiedInScope, None),
-        Stop::BadReturn { .. } | Stop::LeftCode { .. } => claim("machine.returned", Violated, stopped_reason),
-        _ => claim("machine.returned", Inconclusive, stopped_reason),
-    });
+    if process {
+        out.push(match &obs.stop {
+            Stop::Exited { .. } => claim("machine.exited", SatisfiedInScope, None),
+            Stop::LeftCode { .. } | Stop::BadReturn { .. } => claim("machine.exited", Violated, stopped_reason),
+            _ => claim("machine.exited", Inconclusive, stopped_reason),
+        });
+        out.push(match &obs.stop {
+            Stop::OutputLimit { .. } => claim("effects.output_within_limit", Violated, Some("OUTPUT_LIMIT")),
+            Stop::Exited { .. } => claim("effects.output_within_limit", SatisfiedInScope, None),
+            _ => claim("effects.output_within_limit", Inconclusive, stopped_reason),
+        });
+    } else {
+        // machine.returned
+        out.push(match &obs.stop {
+            Stop::Returned => claim("machine.returned", SatisfiedInScope, None),
+            Stop::BadReturn { .. } | Stop::LeftCode { .. } => claim("machine.returned", Violated, stopped_reason),
+            _ => claim("machine.returned", Inconclusive, stopped_reason),
+        });
+    }
 
     // ABI
-    if returned {
+    if process {
+    } else if returned {
         let info = emu::isa_info(binding.target.isa);
         let changed: Vec<String> = info
             .callee_saved
@@ -122,17 +159,58 @@ pub fn judge_case(contract: &Contract, binding: &Binding, case: &Case, obs: &Obs
         });
     }
 
-    // Memory monitor: complete only if execution reached the sentinel.
+    // Memory monitor: complete only if execution reached the end.
     out.push(match &obs.stop {
         Stop::MemoryViolation { .. } => claim("machine.memory.access", Violated, Some("MEMORY_ACCESS_OUTSIDE_ALLOWED")),
-        Stop::Returned | Stop::BadReturn { .. } => claim("machine.memory.access", SatisfiedInScope, None),
+        Stop::Returned | Stop::BadReturn { .. } | Stop::Exited { .. } => claim("machine.memory.access", SatisfiedInScope, None),
         _ => claim("machine.memory.access", Inconclusive, stopped_reason),
     });
     out.push(match &obs.stop {
         Stop::ForbiddenEffect { .. } => claim("effects.no_forbidden", Violated, Some("FORBIDDEN_EFFECT_ATTEMPTED")),
-        Stop::Returned | Stop::BadReturn { .. } => claim("effects.no_forbidden", SatisfiedInScope, None),
+        Stop::Returned | Stop::BadReturn { .. } | Stop::Exited { .. } => claim("effects.no_forbidden", SatisfiedInScope, None),
         _ => claim("effects.no_forbidden", Inconclusive, stopped_reason),
     });
+
+    // Boundary monitors: only for monitored callees that were actually called in this case.
+    for (sym, m) in &obs.monitors {
+        if m.calls == 0 {
+            continue;
+        }
+        let pick = |kind: &str| m.details.iter().filter(|d| d["kind"] == kind).cloned().collect::<Vec<_>>();
+        let mut c = if m.requires_violations > 0 {
+            claim(&format!("link.{sym}.requires"), Violated, Some("CALLER_BROKE_CALLEE_REQUIRES"))
+        } else {
+            claim(&format!("link.{sym}.requires"), SatisfiedInScope, None)
+        };
+        if m.requires_violations > 0 {
+            c.detail = Some(serde_json::json!({ "blame": "caller", "calls": m.calls, "violations": pick("requires") }));
+        }
+        out.push(c);
+        let mut c = if m.ensures_violations > 0 {
+            claim(&format!("link.{sym}.ensures"), Violated, Some("CALLEE_BROKE_ITS_ENSURES"))
+        } else if m.inconclusive > 0 {
+            claim(&format!("link.{sym}.ensures"), Inconclusive, Some("MONITOR_ERROR"))
+        } else if m.returns == 0 {
+            claim(&format!("link.{sym}.ensures"), Inconclusive, Some("CALLEE_DID_NOT_RETURN"))
+        } else {
+            claim(&format!("link.{sym}.ensures"), SatisfiedInScope, None)
+        };
+        if m.ensures_violations > 0 || m.inconclusive > 0 {
+            c.detail = Some(serde_json::json!({ "blame": "callee", "calls": m.calls, "returns": m.returns, "violations": pick("ensures"), "errors": pick("monitor_error") }));
+        }
+        out.push(c);
+        let mut c = if m.abi_violations > 0 {
+            claim(&format!("link.{sym}.abi"), Violated, Some("CALLEE_SAVED_CHANGED_ACROSS_CALL"))
+        } else if m.returns == 0 {
+            claim(&format!("link.{sym}.abi"), Inconclusive, Some("CALLEE_DID_NOT_RETURN"))
+        } else {
+            claim(&format!("link.{sym}.abi"), SatisfiedInScope, None)
+        };
+        if m.abi_violations > 0 {
+            c.detail = Some(serde_json::json!({ "blame": "callee", "violations": pick("abi") }));
+        }
+        out.push(c);
+    }
 
     // Semantic claims need a proper return.
     let sem = semantic_properties(contract);
@@ -240,6 +318,7 @@ pub fn aggregate(properties: &[String], per_case: &[(String, Vec<CaseClaim>)], s
                     }
                     Eval::NotEvaluated => s.cases_not_evaluated += 1,
                 },
+                None if is_conditional(p) => {}
                 None => s.cases_not_evaluated += 1,
             }
         }

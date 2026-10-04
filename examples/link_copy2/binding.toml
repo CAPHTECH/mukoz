@@ -1,11 +1,12 @@
 schema = "mukoz.binding/1"
-id = "mem.copy@x86_64-sysv"
-contract = "mem.copy"
+id = "mem.copy_twice@x86_64-sysv"
+contract = "mem.copy_twice"
 target = "x86_64/raw/sysv-x86_64/none"
+link = "link.toml"
 
 [entry]
-kind = "raw_offset"
-offset = 0
+kind = "symbol"
+symbol = "main.copy_twice"
 
 [arguments]
 rdi = "addr(dst)"
@@ -14,8 +15,6 @@ rdx = "len(input.src)"
 
 [regions.dst]
 size = "len(before.dst)"
-# When another module calls copy, dst's size is not in any register; the contract requires it to equal len(src).
-monitor_size = "len(input.src)"
 init = "before.dst"
 access = "rw"
 observe_as = "after.dst"

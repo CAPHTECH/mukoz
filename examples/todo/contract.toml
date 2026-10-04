@@ -1,0 +1,59 @@
+schema = "mukoz.contract/1"
+id = "proc.todo"
+boundary = "process"
+modifies = ["db", "db_exists"]
+
+# op selects the subcommand (0 add, 1 list, 2 clear, else an unknown word); nargs is the
+# number of arguments after the program name.
+[inputs]
+op = "bv8"
+nargs = "bv64"
+text = { type = "bytes", max_len = 24 }
+
+[state]
+db = { type = "bytes", max_len = 600 }
+db_exists = "bool"
+
+[results]
+code = "bv8"
+out = { type = "bytes", max_len = 1024 }
+err = { type = "bytes", max_len = 64 }
+
+# The virtual file holds at most 600 bytes (state max_len); keep room for one more line.
+[[requires]]
+id = "room_for_a_line"
+expr = "ule(len(before.db), bv64(575))"
+
+[[ensures]]
+id = "add_appends_line"
+expr = '''ite(input.op == bv8(0) and input.nargs == bv64(2) and ugt(len(input.text), bv64(0)),
+  result.code == bv8(0) and after.db_exists and len(result.out) == bv64(0)
+  and after.db == concat(ite(before.db_exists, before.db, b""), concat(input.text, b"\n")), true)'''
+
+[[ensures]]
+id = "add_empty_fails"
+expr = '''ite(input.op == bv8(0) and input.nargs == bv64(2) and len(input.text) == bv64(0),
+  result.code == bv8(1) and after.db_exists == before.db_exists and after.db == ite(before.db_exists, before.db, b""), true)'''
+
+[[ensures]]
+id = "list_prints_db"
+expr = '''ite(input.op == bv8(1) and input.nargs == bv64(1),
+  result.code == bv8(0) and result.out == ite(before.db_exists, before.db, b"")
+  and after.db_exists == before.db_exists and after.db == ite(before.db_exists, before.db, b""), true)'''
+
+[[ensures]]
+id = "clear_empties"
+expr = '''ite(input.op == bv8(2) and input.nargs == bv64(1),
+  result.code == bv8(0) and after.db_exists and len(after.db) == bv64(0), true)'''
+
+[[ensures]]
+id = "usage"
+expr = '''ite((input.op == bv8(0) and input.nargs == bv64(2)) or ((input.op == bv8(1) or input.op == bv8(2)) and input.nargs == bv64(1)), true,
+  result.code == bv8(2) and result.err == b"usage\n"
+  and after.db_exists == before.db_exists and after.db == ite(before.db_exists, before.db, b""))'''
+
+[effects]
+allow = ["read", "write", "open", "close"]
+
+[termination]
+kind = "must_exit"

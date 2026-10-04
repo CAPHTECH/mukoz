@@ -1,0 +1,21 @@
+schema = "mukoz.contract/1"
+id = "proc.hello"
+boundary = "process"
+
+[results]
+code = "bv8"
+out = { type = "bytes", max_len = 64 }
+
+[[ensures]]
+id = "greets"
+expr = 'result.out == b"hello\n"'
+
+[[ensures]]
+id = "exit_zero"
+expr = "result.code == bv8(0)"
+
+[effects]
+allow = ["write"]
+
+[termination]
+kind = "must_exit"

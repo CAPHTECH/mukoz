@@ -1,10 +1,11 @@
 //! `check` and `replay`: plan → execute → judge → assess (docs/07).
 
 use crate::emu::{self, Executor, Observation};
+use crate::image::{self, Image, LinkOptions};
 use crate::expr::{self, Value};
 use crate::judge::{self, Admission, CaseClaim, Eval};
 use crate::plan::{self, Case};
-use crate::spec::{Binding, Contract, Suite, sha256_hex};
+use crate::spec::{Binding, Contract, Entry, Format, Suite, sha256_hex};
 use crate::store::Store;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::json;
@@ -19,26 +20,64 @@ pub struct Loaded {
     pub suite: Suite,
     pub contract: Contract,
     pub binding: Binding,
+    /// The file under test: the artifact, or the entry module's file when a link file is used.
     pub artifact_path: PathBuf,
     pub artifact: Vec<u8>,
+    /// Digest of everything executed (all modules when linked).
     pub artifact_digest: String,
+    pub image: Image,
+    pub modules: Vec<(String, PathBuf)>,
 }
 
-pub fn load(suite_path: &Path, artifact: Option<&Path>) -> Result<Loaded> {
+pub fn load(suite_path: &Path, artifact: Option<&Path>, module_overrides: &[(String, PathBuf)]) -> Result<Loaded> {
     let suite = Suite::load(suite_path)?;
     let contract = Contract::load(&suite.contract_path)?;
     let binding = Binding::load(&suite.binding_path, &contract, &emu::is_arg_or_result_reg)?;
-    let artifact_path = match artifact {
-        Some(p) => p.to_path_buf(),
-        None => suite.artifact_path.clone().ok_or_else(|| anyhow!("USAGE: no artifact: set [artifact] path in the suite or pass --artifact"))?,
+    let read_artifact = |p: &Path| -> Result<Vec<u8>> {
+        let meta = std::fs::metadata(p).with_context(|| format!("artifact {}", p.display()))?;
+        if meta.len() > MAX_ARTIFACT {
+            bail!("artifact is {} bytes; limit is {MAX_ARTIFACT}", meta.len());
+        }
+        Ok(std::fs::read(p)?)
     };
-    let meta = std::fs::metadata(&artifact_path).with_context(|| format!("artifact {}", artifact_path.display()))?;
-    if meta.len() > MAX_ARTIFACT {
-        bail!("artifact is {} bytes; limit is {MAX_ARTIFACT}", meta.len());
+    let given = || -> Result<PathBuf> {
+        match artifact {
+            Some(p) => Ok(p.to_path_buf()),
+            None => suite.artifact_path.clone().ok_or_else(|| anyhow!("USAGE: no artifact: set [artifact] path in the suite or pass --artifact")),
+        }
+    };
+    if !module_overrides.is_empty() && binding.link.is_none() {
+        bail!("USAGE: --module needs a binding with a link file");
     }
-    let artifact = std::fs::read(&artifact_path)?;
-    let artifact_digest = sha256_hex(&artifact);
-    Ok(Loaded { suite, contract, binding, artifact_path, artifact, artifact_digest })
+    let stack_lo = emu::STACK_TOP - binding.stack_bytes.div_ceil(0x1000) * 0x1000;
+    let (image, artifact_path, bytes, digest, modules) = match (&binding.entry, &binding.link) {
+        (Entry::Symbol(sym), Some(link)) => {
+            let opts = LinkOptions { entry_override: artifact, module_overrides };
+            let (img, used) = image::link(link, sym, binding.target.isa, &opts, &emu::is_arg_or_result_reg)?;
+            let entry_mod = sym.split_once('.').map(|(m, _)| m).unwrap_or_default();
+            let path = used.iter().find(|(n, _)| n == entry_mod).map(|(_, p)| p.clone()).unwrap_or_default();
+            let bytes = std::fs::read(&path).unwrap_or_default();
+            let digest = sha256_hex(img.parts.iter().map(|(n, d)| format!("{n}={d}\n")).collect::<String>().as_bytes());
+            (img, path, bytes, digest, used)
+        }
+        (Entry::ElfEntry, None) if binding.target.format == Format::Elf => {
+            let p = given()?;
+            let b = read_artifact(&p)?;
+            let img = Image::elf(&b, binding.target.isa, stack_lo)?;
+            let d = sha256_hex(&b);
+            (img, p, b, d, Vec::new())
+        }
+        (Entry::Offset(o), None) => {
+            let p = given()?;
+            let b = read_artifact(&p)?;
+            let regions: Vec<(u64, u64)> = binding.code_regions.iter().map(|r| (r.offset, r.size)).collect();
+            let img = Image::raw(&b, *o, &regions)?;
+            let d = sha256_hex(&b);
+            (img, p, b, d, Vec::new())
+        }
+        _ => bail!("BINDING_MISMATCH: entry and link do not fit together"),
+    };
+    Ok(Loaded { suite, contract, binding, artifact_path, artifact: bytes, artifact_digest: digest, image, modules })
 }
 
 fn subject_context(l: &Loaded) -> String {
@@ -61,6 +100,19 @@ fn values_json(case: &Case) -> serde_json::Value {
 
 fn observed_json(l: &Loaded, case: &Case, obs: &Observation) -> serde_json::Value {
     let mut m = serde_json::Map::new();
+    if let Some(p) = &obs.process {
+        let show = |b: &[u8]| json!({ "text": String::from_utf8_lossy(b), "hex": expr::hex(b), "len": b.len() });
+        m.insert("exit_status".into(), json!(p.exit_status));
+        m.insert("stdout".into(), show(&p.stdout));
+        m.insert("stderr".into(), show(&p.stderr));
+        for (name, (exists, data)) in &p.files {
+            m.insert(format!("file.{name}"), json!({ "exists": exists, "text": String::from_utf8_lossy(data), "hex": expr::hex(data), "len": data.len() }));
+        }
+        m.insert("syscalls_executed".into(), json!(p.syscall_count));
+        m.insert("last_syscalls".into(), json!(p.syscalls));
+        let _ = case;
+        return serde_json::Value::Object(m);
+    }
     for (name, reg) in &l.binding.results {
         if let Some(raw) = obs.regs_out.get(reg) {
             let w = match l.contract.results.get(name).map(|v| v.ty) {
@@ -92,12 +144,13 @@ fn platform_json() -> serde_json::Value {
 pub struct CheckOpts<'a> {
     pub suite: &'a Path,
     pub artifact: Option<&'a Path>,
+    pub modules: &'a [(String, PathBuf)],
     pub fail_fast: bool,
     pub store: &'a Store,
 }
 
 pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
-    let l = load(o.suite, o.artifact)?;
+    let l = load(o.suite, o.artifact, o.modules)?;
     let target = l.binding.target.text.clone();
     let (regs, reg_na) = if l.suite.include_regressions { o.store.load_regressions(&l.contract, &target)? } else { (Vec::new(), 0) };
     let reg_ids: Vec<String> = regs.iter().map(|(id, _)| id.clone()).collect();
@@ -108,13 +161,14 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     let run_id = format!("run-{}", &sha256_hex(format!("{context}{started}").as_bytes())[..12]);
 
     let exec = Executor {
-        code: &l.artifact,
+        image: &l.image,
+        contract: &l.contract,
         binding: &l.binding,
         insn_limit: l.suite.limits.instructions_per_case,
         timeout_ms: l.suite.limits.wall_ms_per_case,
         vary_placement: l.suite.vary_placement,
     };
-    let mut properties = judge::machine_properties(&l.binding);
+    let mut properties = judge::machine_properties(&l.binding, &l.image.monitors);
     properties.extend(judge::semantic_properties(&l.contract));
 
     let mut per_case: Vec<(String, Vec<CaseClaim>)> = Vec::new();
@@ -158,7 +212,8 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "stop": obs.stop,
                 "reason": c.reason,
                 "detail": c.detail,
-                "observed": if matches!(obs.stop, emu::Stop::Returned) { observed_json(&l, case, obs) } else { json!(null) },
+                "observed": if matches!(obs.stop, emu::Stop::Returned | emu::Stop::Exited { .. }) || obs.process.is_some() { observed_json(&l, case, obs) } else { json!(null) },
+                "monitors": obs.monitors,
                 "instructions_executed": obs.instructions,
                 "recent_instructions": obs.recent.iter().rev().take(16).rev().collect::<Vec<_>>(),
             });
@@ -169,6 +224,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "subject_context": context,
                 "suite": std::fs::canonicalize(o.suite)?.display().to_string(),
                 "artifact": { "path": std::fs::canonicalize(&l.artifact_path)?.display().to_string(), "digest": l.artifact_digest },
+                "modules": l.modules.iter().map(|(n, p)| json!({ "name": n, "path": std::fs::canonicalize(p).map(|p| p.display().to_string()).unwrap_or_default() })).collect::<Vec<_>>(),
                 "contract": { "id": l.contract.id, "digest": l.contract.digest },
                 "binding": { "id": l.binding.id, "digest": l.binding.digest },
                 "property": s.property,
@@ -228,6 +284,11 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 "binding": l.binding.id,
                 "target": target,
                 "artifact": { "path": l.artifact_path.display().to_string(), "digest": l.artifact_digest, "bytes": l.artifact.len() },
+                "modules": l.image.parts.iter().map(|(n, d)| {
+                    let m = l.image.modules.iter().find(|m| &m.name == n);
+                    json!({ "name": n, "digest": d, "base": m.map(|m| format!("0x{:x}", m.base)), "bytes": m.map(|m| m.size) })
+                }).collect::<Vec<_>>(),
+                "monitors": l.image.monitors.iter().map(|m| json!({ "symbol": m.symbol, "contract": m.contract.id })).collect::<Vec<_>>(),
                 "platform": platform_json(),
                 "quantification": "enumerated_cases_not_exhaustive",
                 "generator": plan::GENERATOR_VERSION,
@@ -259,7 +320,12 @@ pub fn replay(store: &Store, cx_id: &str, artifact: Option<&Path>) -> Result<ser
         Some(a) => a.to_path_buf(),
         None => PathBuf::from(item["artifact"]["path"].as_str().unwrap_or_default()),
     };
-    let l = load(&suite_path, Some(&art))?;
+    let modules: Vec<(String, PathBuf)> = item["modules"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|m| Some((m["name"].as_str()?.to_string(), PathBuf::from(m["path"].as_str()?)))).collect())
+        .unwrap_or_default();
+    // With a link file, keep the recorded modules except the one --artifact replaces.
+    let l = load(&suite_path, Some(&art), &modules.iter().filter(|_| artifact.is_none()).cloned().collect::<Vec<_>>())?;
     let mut values = expr::ValEnv::new();
     let vals = item["case"]["values"].as_object().ok_or_else(|| anyhow!("counterexample has no values"))?;
     for (prefix, m) in [("input", &l.contract.inputs), ("before", &l.contract.state)] {
@@ -271,7 +337,7 @@ pub fn replay(store: &Store, cx_id: &str, artifact: Option<&Path>) -> Result<ser
     }
     let seed = item["case"]["filler_seed"].as_str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
     let case = Case { id: item["case"]["id"].as_str().unwrap_or("replay").to_string(), origin: plan::Origin::Regression, values, filler_seed: seed };
-    let exec = Executor { code: &l.artifact, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case, vary_placement: l.suite.vary_placement };
+    let exec = Executor { image: &l.image, contract: &l.contract, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case, vary_placement: l.suite.vary_placement };
     let obs = exec.run(&case);
     let claims = judge::judge_case(&l.contract, &l.binding, &case, &obs);
     let property = item["property"].as_str().unwrap_or_default();
@@ -285,7 +351,8 @@ pub fn replay(store: &Store, cx_id: &str, artifact: Option<&Path>) -> Result<ser
         "property_now": target_claim.map(|c| c.eval),
         "meaning": if same_subject { "replay on the original subject" } else { "regression check on a changed subject; passing means only that this counterexample no longer reproduces" },
         "stop": obs.stop,
-        "observed": if matches!(obs.stop, emu::Stop::Returned) { observed_json(&l, &case, &obs) } else { json!(null) },
+        "observed": if matches!(obs.stop, emu::Stop::Returned | emu::Stop::Exited { .. }) || obs.process.is_some() { observed_json(&l, &case, &obs) } else { json!(null) },
+        "monitors": obs.monitors,
         "claims": claims.iter().map(|c| json!({ "property": c.property, "evaluation": c.eval, "reason": c.reason, "detail": c.detail })).collect::<Vec<_>>(),
         "recent_instructions": obs.recent,
     }))

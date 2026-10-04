@@ -1,0 +1,4 @@
+schema = "mukoz.suite/1"
+id = "arith.add64_small"
+contract = "contract.toml"
+binding = "binding.toml"

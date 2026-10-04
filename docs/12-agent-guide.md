@@ -67,3 +67,19 @@ HOLD は「合格とも不合格とも言えない」。直すべき所は `reas
 ## 12.5 範囲の読み方
 
 ACCEPT_WITHIN_SCOPE は「列挙したケースで、エミュレータ上で、書いた性質が破れなかった」という意味で、正しさの証明ではない。`limitations` に範囲の限界が出る(例: `enumerated_cases_not_exhaustive`、`emulated_only_not_native_execution`、`requires_excluded_*`、`boundary_product_reduced_*`)。`release_authorized` は常に false。
+
+## 12.6 プロセス(コマンドラインのプログラム)を作るとき
+
+詳細は 13章。要点:
+
+- ターゲットは `<isa>/raw/<abi>/linux`(先頭が `_start`)か `<isa>/elf/<abi>/linux`(静的 ET_EXEC)。入口では sp が argc を指す(Linux と同じ)。入口から `ret` してはいけない。exit / exit_group で終わる。
+- 使えるシステムコールは read・write・open/openat・close・lseek・exit/exit_group だけ。ほかを呼ぶと HOLD(`UNSUPPORTED_DURING_RUN`)。契約の `[effects] allow` にないものを呼ぶと REJECT。
+- ファイルは Binding の `[files]` で宣言したパスだけが存在しうる。raw のプロセスは `0x10000000` から `data_bytes`(既定 64 KiB)を書込み可能な作業領域として使える。
+- 反例の `observed` に stdout / stderr / 終了コード / ファイルの中身 / 直近のシステムコール(引数と戻り値)が出る。まずここと `why_false` を見る。
+
+## 12.7 モジュールに分けて作るとき
+
+- `link.toml` にモジュール(ファイル・公開する記号とオフセット)とインポート表(スロット → 記号)を書く。他のモジュールの呼出しは表を通す: x86-64 は `call qword ptr [0xf0000 + 8*k]`、AArch64 は `movz x16, #0xf, lsl #16; ldr x16, [x16, #8*k]; blr x16`。
+- 葉のモジュールから作り、単独の Suite で ACCEPT にしてから上位に進む。上位を検査するときは下位の Suite を `[monitors]` に書く。
+- 上位の REJECT で `link.<記号>.ensures` / `.abi` が破れていたら**呼び先**、`.requires` が破れていたら**呼び元**を直す。`detail.blame` に書いてある。
+- 位置は `モジュール名+0x…` で出る。`--module <name>=<file>` で任意のモジュールを差し替えて試せる。

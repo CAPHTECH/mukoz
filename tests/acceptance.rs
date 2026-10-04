@@ -264,3 +264,98 @@ fn varied_placement_finds_alignment_dependent_bugs() {
     assert_eq!(admission(&a), "ACCEPT_WITHIN_SCOPE", "{:#}", a["data"]["assessment"]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+fn check_args(args: &[&str]) -> (Value, i32) {
+    let store = tempdir();
+    let out = Command::new(env!("CARGO_BIN_EXE_mukoz")).arg("check").args(args).args(["--store", &store]).output().expect("run mukoz");
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("bad json: {e}\n{}", String::from_utf8_lossy(&out.stdout)));
+    let _ = std::fs::remove_dir_all(&store);
+    (v, out.status.code().unwrap_or(-1))
+}
+
+fn pfx(n: &str) -> String {
+    format!("fixtures/process/{n}")
+}
+
+// docs/13: a Linux process (raw or static ELF, both ISAs) with modeled write/exit.
+#[test]
+fn process_stdout_and_exit_status() {
+    for (suite, art) in [
+        ("examples/hello/suite.x86_64.raw.toml", "hello_x86.bin"),
+        ("examples/hello/suite.aarch64.raw.toml", "hello_a64.bin"),
+        ("examples/hello/suite.aarch64.elf.toml", "hello_a64.elf"),
+    ] {
+        let v = check(suite, &pfx(art), &[]);
+        assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{art}: {:#}", v["data"]["assessment"]);
+    }
+    let v = check("examples/hello/suite.x86_64.raw.toml", &pfx("hello_x86_mut_len.bin"), &[]);
+    assert_eq!(admission(&v), "REJECT");
+    assert_eq!(violated(&v), vec!["proc.hello/greets".to_string()]);
+    assert_eq!(v["data"]["findings"][0]["observed"]["stdout"]["text"], "hello", "{:#}", v["data"]["findings"][0]);
+}
+
+// Files, argv, stderr and exit codes; an unmodeled system call is HOLD, never ACCEPT (I1).
+#[test]
+fn process_files_and_unsupported_syscalls() {
+    let s = "examples/todo/suite.x86_64.elf.toml";
+    let v = check(s, &pfx("todo_x86.elf"), &[]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    for m in ["todo_x86_mut_nonl.elf", "todo_x86_mut_noappend.elf"] {
+        let v = check(s, &pfx(m), &[]);
+        assert_eq!(admission(&v), "REJECT", "{m}");
+        assert_eq!(violated(&v), vec!["proc.todo/add_appends_line".to_string()], "{m}");
+    }
+    let v = check(s, &pfx("todo_x86_mut_stat.elf"), &[]);
+    assert_eq!(admission(&v), "HOLD", "{:#}", v["data"]["assessment"]);
+    assert!(v["data"]["assessment"]["reasons"].to_string().contains("UNSUPPORTED_DURING_RUN"));
+}
+
+#[test]
+fn dynamic_or_pie_elf_is_refused() {
+    // The host's /bin/true is a PIE linked against libc: refused before running.
+    let dir = tempdir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let ex = std::fs::canonicalize("examples/hello").unwrap();
+    std::fs::copy(ex.join("contract.toml"), format!("{dir}/contract.toml")).unwrap();
+    let b = std::fs::read_to_string(ex.join("binding.aarch64.elf.toml")).unwrap().replace("aarch64/elf/aapcs64", "x86_64/elf/sysv-x86_64");
+    std::fs::write(format!("{dir}/binding.toml"), b).unwrap();
+    let s = std::fs::read_to_string(ex.join("suite.aarch64.elf.toml")).unwrap().replace("binding.aarch64.elf.toml", "binding.toml");
+    std::fs::write(format!("{dir}/suite.toml"), s).unwrap();
+    let (v, code) = check_args(&[&format!("{dir}/suite.toml"), "--artifact", "/bin/true"]);
+    assert_eq!(code, 2, "{v:#}");
+    let msg = v["errors"][0]["message"].as_str().unwrap();
+    assert!(msg.contains("ET_DYN") || msg.contains("UNRESOLVED_DEPENDENCY"), "{msg}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// docs/13 13.3-13.4: modules joined by a link file; monitors at the call boundary say
+// whether the caller broke the callee's requires or the callee broke its ensures / the ABI.
+#[test]
+fn link_monitors_assign_blame() {
+    let (v, _) = check_args(&["examples/link_sum3/suite.toml"]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    let (v, _) = check_args(&["examples/link_sum3/suite.aarch64.toml"]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    let (v, _) = check_args(&["examples/link_sum3/suite.toml", "--module", "arith=fixtures/x86_64/add64_mut_sub.bin"]);
+    assert!(violated(&v).contains(&"link.arith.add64.ensures".to_string()), "{:?}", violated(&v));
+    assert!(!violated(&v).contains(&"link.arith.add64.requires".to_string()));
+    let (v, _) = check_args(&["examples/link_sum3/suite.toml", "--module", "arith=fixtures/x86_64/add64_mut_clobber_rbx.bin"]);
+    assert!(violated(&v).contains(&"link.arith.add64.abi".to_string()), "{:?}", violated(&v));
+    let (v, _) = check_args(&["examples/link_sum3/suite_strict.toml"]);
+    assert_eq!(violated(&v), vec!["link.arith.add64.requires".to_string()]);
+    let f = &v["data"]["findings"][0]["detail"];
+    assert_eq!(f["blame"], "caller", "{f:#}");
+    assert_eq!(f["violations"][0]["return_to"], "main+0x18", "{f:#}");
+}
+
+#[test]
+fn link_monitor_recovers_regions() {
+    let (v, _) = check_args(&["examples/link_copy2/suite.toml"]);
+    assert_eq!(admission(&v), "ACCEPT_WITHIN_SCOPE", "{:#}", v["data"]["assessment"]);
+    let (v, _) = check_args(&["examples/link_copy2/suite.toml", "--module", "mem=fixtures/x86_64/copy_mut_half.bin"]);
+    assert!(violated(&v).contains(&"link.mem.copy.ensures".to_string()), "{:?}", violated(&v));
+    let (v, _) = check_args(&["examples/link_copy2/suite.toml", "--module", "mem=fixtures/x86_64/copy_mut_offbyone.bin"]);
+    assert_eq!(admission(&v), "REJECT");
+    let pc = v["data"]["findings"][0]["stop"]["pc_offset"].as_str().unwrap();
+    assert!(pc.starts_with("mem+"), "violation located in the callee module: {pc}");
+}

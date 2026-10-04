@@ -1,0 +1,20 @@
+schema = "mukoz.binding/1"
+id = "arith.sum3@x86_64-sysv_strict"
+contract = "arith.sum3"
+target = "x86_64/raw/sysv-x86_64/none"
+link = "link_strict.toml"
+
+[entry]
+kind = "symbol"
+symbol = "main.sum3"
+
+[arguments]
+rdi = "input.a"
+rsi = "input.b"
+rdx = "input.c"
+
+[results]
+value = "rax"
+
+[completion]
+kind = "return_to_sentinel"

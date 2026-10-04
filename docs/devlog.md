@@ -39,3 +39,6 @@
 | 2026-10-04 | E1 | utf8_to_utf16 / utf8_to_utf16_fast(8バイト ASCII 一括処理を要件化)の契約・gcc 参照・変異を追加。生成器に ASCII の連続断片、隠し判定に ASCII 連続を追加。注意: zsh で引用なし $2 は分割されず、変異用フラグが効かない版を一度作った(cmp で検出、作り直して両判定器 REJECT を確認) |
 | 2026-10-04 | 4 | 較正の続き(Opus、実行なしの一発書き、各1回): utf8_to_utf16_fast x86 2/2・a64 2/2 PASS。codec(4機能: UTF-8⇔UTF-16・base64 符号化/厳密復号、x86 1932〜1993 B・a64 1360〜1376 B)x86 2/2・a64 2/2 PASS。隠し判定と Mukoz は全件一致。x86 #2 は自作の Python 版アルゴリズムを Python のコーデックと突き合わせていた(バイナリの実行ではないが、Z 条件の「推論のみ」より強い) |
 | 2026-10-04 | E1 | codec の契約(48KB、op ごとに結果・出力・残りの不変、範囲外 op)・gcc 参照・変異2件(lonelow / padbits)。padbits は最初 ACCEPT(非正規パディングの生成が希薄)→ 断片の重みを上げて REJECT(3件)。Opus では一発書きの失敗域に届かないため、較正を Haiku 4.5 に移す |
+| 2026-10-04 | 4 | 較正: Sonnet 5.5 の一発書き 8/8 PASS(utf8_to_utf16・codec、x86/a64)。Haiku 4.5 は utf8_to_utf16・codec 0/8、小課題 hex_encode 1/2・memmove 0/2・utf8_count 0/2・base64 0/2 |
+| 2026-10-04 | 4 | 本実験(Haiku、各条件4件): utf8_to_utf16 x86 は A/B/Z とも 0/4、a64 も判定済み分すべて FAIL(床)。memmove x86 は A 3/4・B 3/4・Z 2/4。Mukoz の判定は memmove 12件すべて隠し判定と一致。差は見えない(件数が少ない) |
+| 2026-10-04 | E1 | 利用者の指示で、プロセス境界とモジュール分割を実装(13章)。最初の todo 検査で、Mukoz が argv の式の数を超える argc を黙って切り詰めていた欠陥が見つかり、BINDING_MISMATCH に直した。監視の requires 違反の位置に rsp の値を出していた誤りを、戻り先アドレスに直した |

@@ -1,0 +1,8 @@
+schema = "mukoz.suite/1"
+id = "proc.hello.aarch64.elf"
+contract = "contract.toml"
+binding = "binding.aarch64.elf.toml"
+
+[generate]
+seed = "hello"
+random_cases = 4

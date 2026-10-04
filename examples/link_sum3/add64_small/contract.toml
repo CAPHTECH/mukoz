@@ -1,0 +1,25 @@
+schema = "mukoz.contract/1"
+id = "arith.add64_small"
+boundary = "routine"
+
+[inputs]
+a = "bv64"
+b = "bv64"
+
+[results]
+value = "bv64"
+
+# The callee only promises a sum for 32-bit operands.
+[[requires]]
+id = "small"
+expr = "ult(input.a, bv64(0x100000000)) and ult(input.b, bv64(0x100000000))"
+
+[[ensures]]
+id = "sum"
+expr = "result.value == input.a + input.b"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

@@ -1,0 +1,24 @@
+schema = "mukoz.contract/1"
+id = "mem.copy_twice"
+boundary = "routine"
+modifies = ["dst"]
+
+[inputs]
+src = { type = "bytes", max_len = 64 }
+
+[state]
+dst = { type = "bytes", max_len = 128 }
+
+[[requires]]
+id = "room"
+expr = "len(before.dst) == len(input.src) + len(input.src)"
+
+[[ensures]]
+id = "twice"
+expr = "after.dst == concat(input.src, input.src)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

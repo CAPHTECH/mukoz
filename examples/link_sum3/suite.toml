@@ -1,0 +1,8 @@
+schema = "mukoz.suite/1"
+id = "arith.sum3"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "sum3"
+random_cases = 64

@@ -1,0 +1,17 @@
+schema = "mukoz.link/1"
+
+[[modules]]
+name = "main"
+path = "copy_twice.bin"
+exports = { copy_twice = 0 }
+
+[[modules]]
+name = "mem"
+path = "../../fixtures/x86_64/copy.bin"
+exports = { copy = 0 }
+
+[imports]
+0 = "mem.copy"
+
+[monitors]
+"mem.copy" = "../copy/suite.x86_64.toml"

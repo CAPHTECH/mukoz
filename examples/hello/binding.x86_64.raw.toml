@@ -1,0 +1,18 @@
+schema = "mukoz.binding/1"
+id = "proc.hello@x86_64.raw"
+contract = "proc.hello"
+target = "x86_64/raw/sysv-x86_64/linux"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[process]
+argv0 = "hello"
+
+[results]
+code = "exit_status"
+out = "stdout"
+
+[completion]
+kind = "exit"

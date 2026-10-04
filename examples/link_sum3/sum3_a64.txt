@@ -1,0 +1,15 @@
+sum3_a64.bin (hand-encoded AArch64, no assembler on the host):
+  stp x29, x30, [sp, #-32]!   a9be7bfd
+  mov x29, sp                 910003fd
+  str x19, [sp, #16]          f9000bf3
+  mov x19, x2                 aa0203f3
+  movz x16, #0xf, lsl #16     d2a001f0   (import table 0xf0000)
+  ldr x16, [x16]              f9400210   (slot 0)
+  blr x16                     d63f0200
+  mov x1, x19                 aa1303e1
+  movz x16, #0xf, lsl #16     d2a001f0
+  ldr x16, [x16]              f9400210
+  blr x16                     d63f0200
+  ldr x19, [sp, #16]          f9400bf3
+  ldp x29, x30, [sp], #32     a8c27bfd
+  ret                         d65f03c0

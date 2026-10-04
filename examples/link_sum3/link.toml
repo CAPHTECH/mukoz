@@ -1,0 +1,17 @@
+schema = "mukoz.link/1"
+
+[[modules]]
+name = "main"
+path = "sum3.bin"
+exports = { sum3 = 0 }
+
+[[modules]]
+name = "arith"
+path = "../../fixtures/x86_64/add64.bin"
+exports = { add64 = 0 }
+
+[imports]
+0 = "arith.add64"
+
+[monitors]
+"arith.add64" = "../add64/suite.x86_64.toml"

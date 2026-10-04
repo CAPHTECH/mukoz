@@ -106,10 +106,21 @@ pub struct Cond {
     pub expr: Expr,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Boundary {
+    Routine,
+    Process,
+}
+
+/// Effects a process contract may allow (docs/13). `exit` is always allowed.
+pub const PROCESS_EFFECTS: &[&str] = &["read", "write", "open", "close", "lseek"];
+
 #[derive(Debug, Clone)]
 pub struct Contract {
     pub id: String,
     pub digest: String,
+    pub boundary: Boundary,
+    pub effects: Vec<String>,
     pub inputs: BTreeMap<String, VarType>,
     pub state: BTreeMap<String, VarType>,
     pub results: BTreeMap<String, VarType>,
@@ -124,14 +135,27 @@ impl Contract {
         if f.schema != "mukoz.contract/1" {
             bail!("unsupported contract schema `{}`", f.schema);
         }
-        if f.boundary != "routine" {
-            bail!("UNSUPPORTED_FEATURE: boundary `{}` is not implemented yet (only `routine`)", f.boundary);
+        let boundary = match f.boundary.as_str() {
+            "routine" => Boundary::Routine,
+            "process" => Boundary::Process,
+            b => bail!("UNSUPPORTED_FEATURE: boundary `{b}` (use `routine` or `process`)"),
+        };
+        match (boundary, f.termination.kind.as_str()) {
+            (Boundary::Routine, "must_return") | (Boundary::Process, "must_exit") => {}
+            (_, k) => bail!("UNSUPPORTED_FEATURE: termination `{k}` for a {} contract (routine: must_return, process: must_exit)", f.boundary),
         }
-        if f.termination.kind != "must_return" {
-            bail!("UNSUPPORTED_FEATURE: termination `{}`", f.termination.kind);
-        }
-        if !f.effects.allow.is_empty() {
-            bail!("UNSUPPORTED_FEATURE: routine effects other than none: {:?}", f.effects.allow);
+        match boundary {
+            Boundary::Routine if !f.effects.allow.is_empty() => {
+                bail!("UNSUPPORTED_FEATURE: routine effects other than none: {:?}", f.effects.allow)
+            }
+            Boundary::Process => {
+                for e in &f.effects.allow {
+                    if !PROCESS_EFFECTS.contains(&e.as_str()) {
+                        bail!("UNSUPPORTED_FEATURE: effect `{e}` (process effects: {PROCESS_EFFECTS:?}; exit is always allowed)");
+                    }
+                }
+            }
+            _ => {}
         }
         let res = |m: &BTreeMap<String, VarDecl>| -> Result<BTreeMap<String, VarType>> {
             m.iter().map(|(k, v)| Ok((k.clone(), v.resolve(k)?))).collect()
@@ -140,8 +164,8 @@ impl Contract {
         let state = res(&f.state)?;
         let results = res(&f.results)?;
         for (k, v) in &results {
-            if v.ty == Ty::Bytes {
-                bail!("UNSUPPORTED_FEATURE: result `{k}` of type bytes");
+            if v.ty == Ty::Bytes && boundary == Boundary::Routine {
+                bail!("UNSUPPORTED_FEATURE: result `{k}` of type bytes (only process contracts have bytes results: stdout, stderr)");
             }
         }
         for m in &f.modifies {
@@ -185,7 +209,7 @@ impl Contract {
         if ensures.is_empty() && results.is_empty() && f.modifies.is_empty() {
             bail!("CONTRACT_GAP: contract has no ensures, results or modified state");
         }
-        Ok(Contract { id: f.id, digest, inputs, state, results, modifies: f.modifies, requires, ensures })
+        Ok(Contract { id: f.id, digest, boundary, effects: f.effects.allow, inputs, state, results, modifies: f.modifies, requires, ensures })
     }
 
     /// Types visible before execution (inputs and before-state).
@@ -221,6 +245,11 @@ struct BindingFile {
     stack: Option<StackFile>,
     #[serde(default)]
     regions: BTreeMap<String, RegionFile>,
+    process: Option<ProcessFile>,
+    #[serde(default)]
+    files: BTreeMap<String, FileFile>,
+    /// Module layout (docs/13 13.3); relative to the binding file.
+    link: Option<String>,
     completion: CompletionFile,
 }
 
@@ -228,7 +257,29 @@ struct BindingFile {
 #[serde(deny_unknown_fields)]
 struct EntryFile {
     kind: String,
-    offset: u64,
+    offset: Option<u64>,
+    symbol: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct ProcessFile {
+    argv0: Option<String>,
+    #[serde(default)]
+    argv: Vec<String>,
+    argc: Option<String>,
+    stdin: Option<String>,
+    data_bytes: Option<u64>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct FileFile {
+    path: String,
+    init: Option<String>,
+    exists: Option<String>,
+    observe_as: Option<String>,
+    exists_as: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -251,6 +302,9 @@ struct RegionFile {
     init: Option<String>,
     access: String,
     observe_as: Option<String>,
+    /// Size when the routine is called by another module and `size` cannot be recovered
+    /// from the argument registers (boundary monitors, docs/13 13.4).
+    monitor_size: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -265,11 +319,26 @@ pub enum Isa {
     Aarch64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Raw,
+    Elf,
+}
+
 #[derive(Debug, Clone)]
 pub struct Target {
     pub isa: Isa,
+    pub format: Format,
     pub abi: String,
+    /// `none` (routine) or `linux` (process).
+    pub os: String,
     pub text: String,
+}
+
+impl Target {
+    pub fn is_process(&self) -> bool {
+        self.os == "linux"
+    }
 }
 
 impl Target {
@@ -283,14 +352,24 @@ impl Target {
             "aarch64" => Isa::Aarch64,
             other => bail!("UNSUPPORTED_FEATURE: isa `{other}`"),
         };
-        if parts[1] != "raw" || parts[3] != "none" {
-            bail!("UNSUPPORTED_FEATURE: only raw routines (`<isa>/raw/<abi>/none`) are implemented, got `{s}`");
+        let format = match parts[1] {
+            "raw" => Format::Raw,
+            "elf" => Format::Elf,
+            f => bail!("UNSUPPORTED_FEATURE: format `{f}` (raw or elf)"),
+        };
+        let os = parts[3];
+        match (format, os) {
+            (Format::Raw, "none") | (Format::Raw, "linux") | (Format::Elf, "linux") => {}
+            _ => bail!("UNSUPPORTED_FEATURE: `{s}` (implemented: <isa>/raw/<abi>/none routines, <isa>/raw|elf/<abi>/linux processes)"),
         }
-        let ok = matches!((isa, parts[2]), (Isa::X86_64, "sysv-x86_64") | (Isa::Aarch64, "aapcs64") | (Isa::Aarch64, "apple-arm64"));
+        let ok = match os {
+            "none" => matches!((isa, parts[2]), (Isa::X86_64, "sysv-x86_64") | (Isa::Aarch64, "aapcs64") | (Isa::Aarch64, "apple-arm64")),
+            _ => matches!((isa, parts[2]), (Isa::X86_64, "sysv-x86_64") | (Isa::Aarch64, "aapcs64")),
+        };
         if !ok {
             bail!("PLATFORM_COMBINATION_INVALID or unsupported ABI: `{s}`");
         }
-        Ok(Target { isa, abi: parts[2].to_string(), text: s.to_string() })
+        Ok(Target { isa, format, abi: parts[2].to_string(), os: os.to_string(), text: s.to_string() })
     }
 }
 
@@ -309,19 +388,54 @@ pub struct Region {
     pub access: Access,
     /// `after.<state>` observed from this region at exit.
     pub observe_state: Option<String>,
+    pub monitor_size: Option<Expr>,
 }
+
+#[derive(Debug, Clone)]
+pub enum Entry {
+    Offset(u64),
+    ElfEntry,
+    /// `module.symbol` from the link file.
+    Symbol(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProcessSpec {
+    pub argv0: String,
+    pub argv: Vec<Expr>,
+    pub argc: Option<Expr>,
+    pub stdin: Option<Expr>,
+    pub data_bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileSpec {
+    pub name: String,
+    pub path: String,
+    pub init: Option<Expr>,
+    pub exists: Option<Expr>,
+    pub observe_state: Option<String>,
+    pub exists_state: Option<String>,
+}
+
+/// Where a process result comes from.
+pub const PROCESS_RESULTS: &[&str] = &["exit_status", "stdout", "stderr"];
 
 #[derive(Debug, Clone)]
 pub struct Binding {
     pub id: String,
     pub digest: String,
     pub target: Target,
-    pub entry_offset: u64,
+    pub entry: Entry,
     pub code_regions: Vec<CodeRegionFile>,
     pub arguments: Vec<(String, Expr)>,
+    /// Routine: result → register. Process: result → exit_status | stdout | stderr.
     pub results: Vec<(String, String)>,
     pub stack_bytes: u64,
     pub regions: Vec<Region>,
+    pub process: Option<ProcessSpec>,
+    pub files: Vec<FileSpec>,
+    pub link: Option<PathBuf>,
 }
 
 impl Binding {
@@ -334,11 +448,29 @@ impl Binding {
             bail!("BINDING_MISMATCH: binding is for contract `{}`, suite uses `{}`", f.contract, contract.id);
         }
         let target = Target::parse(&f.target)?;
-        if f.entry.kind != "raw_offset" {
-            bail!("UNSUPPORTED_FEATURE: entry kind `{}`", f.entry.kind);
+        let process = target.is_process();
+        if (process && contract.boundary != Boundary::Process) || (!process && contract.boundary != Boundary::Routine) {
+            bail!("BINDING_MISMATCH: target `{}` needs a {} contract", target.text, if process { "process" } else { "routine" });
         }
-        if f.completion.kind != "return_to_sentinel" {
-            bail!("UNSUPPORTED_FEATURE: completion `{}`", f.completion.kind);
+        let entry = match (f.entry.kind.as_str(), f.entry.offset, &f.entry.symbol) {
+            ("raw_offset", Some(o), None) if target.format == Format::Raw && f.link.is_none() => Entry::Offset(o),
+            ("elf_entry", None, None) if target.format == Format::Elf => Entry::ElfEntry,
+            ("symbol", None, Some(sym)) if target.format == Format::Raw && f.link.is_some() => Entry::Symbol(sym.clone()),
+            (k, ..) => bail!(
+                "BINDING_MISMATCH: entry kind `{k}` with these fields does not fit `{}` (raw: kind = \"raw_offset\", offset = N; \
+                 elf: kind = \"elf_entry\"; with link: kind = \"symbol\", symbol = \"module.name\")",
+                target.text
+            ),
+        };
+        let want_completion = if process { "exit" } else { "return_to_sentinel" };
+        if f.completion.kind != want_completion {
+            bail!("BINDING_MISMATCH: completion `{}` (this target needs `{want_completion}`)", f.completion.kind);
+        }
+        if process && (!f.arguments.is_empty() || !f.regions.is_empty()) {
+            bail!("BINDING_MISMATCH: a process binding has no argument registers or regions; use [process] and [files]");
+        }
+        if !process && (f.process.is_some() || !f.files.is_empty()) {
+            bail!("BINDING_MISMATCH: [process] and [files] need a process target (`<isa>/<format>/<abi>/linux`)");
         }
         let region_names: Vec<String> = f.regions.keys().cloned().collect();
         let pre = contract.pre_env();
@@ -357,10 +489,18 @@ impl Binding {
         }
         let mut results = Vec::new();
         for (name, reg) in &f.results {
-            if !contract.results.contains_key(name) {
+            let Some(vt) = contract.results.get(name) else {
                 bail!("BINDING_MISMATCH: result `{name}` is not declared in the contract");
-            }
-            if !isa_regs(target.isa, reg) {
+            };
+            if process {
+                let want_bytes = reg != "exit_status";
+                if !PROCESS_RESULTS.contains(&reg.as_str()) {
+                    bail!("BINDING_MISMATCH: process result `{name}` = `{reg}` (use one of {PROCESS_RESULTS:?})");
+                }
+                if want_bytes != (vt.ty == Ty::Bytes) {
+                    bail!("BINDING_MISMATCH: result `{name}` = `{reg}` needs a {} contract type", if want_bytes { "bytes" } else { "bitvector" });
+                }
+            } else if !isa_regs(target.isa, reg) {
                 bail!("BINDING_MISMATCH: `{reg}` is not a result register of {}", target.text);
             }
             results.push((name.clone(), reg.clone()));
@@ -403,23 +543,88 @@ impl Binding {
                 }
                 None => None,
             };
-            regions.push(Region { name: name.clone(), size, init, access, observe_state });
+            let monitor_size = match &r.monitor_size {
+                Some(src) => {
+                    let e = expr::parse(src).map_err(|m| anyhow!("BINDING_MISMATCH: region {name} monitor_size: {m}"))?;
+                    if expr::typecheck(&e, &cx).map_err(|m| anyhow!("BINDING_MISMATCH: region {name} monitor_size: {m}"))? != Ty::Bv(64) {
+                        bail!("BINDING_MISMATCH: region {name} monitor_size must be bv64");
+                    }
+                    Some(e)
+                }
+                None => None,
+            };
+            regions.push(Region { name: name.clone(), size, init, access, observe_state, monitor_size });
+        }
+        let typed = |what: &str, src: &str, want: Option<Ty>| -> Result<Expr> {
+            let e = expr::parse(src).map_err(|m| anyhow!("BINDING_MISMATCH: {what}: {m}"))?;
+            let t = expr::typecheck(&e, &CheckCtx { vars: &pre, allow_addr: false, regions: &[] }).map_err(|m| anyhow!("BINDING_MISMATCH: {what}: {m}"))?;
+            if let Some(w) = want {
+                if t != w {
+                    bail!("BINDING_MISMATCH: {what} must be {w}, got {t}");
+                }
+            }
+            Ok(e)
+        };
+        let process_spec = match (&f.process, process) {
+            (Some(p), _) => Some(ProcessSpec {
+                argv0: p.argv0.clone().unwrap_or_else(|| "prog".into()),
+                argv: p.argv.iter().enumerate().map(|(i, a)| typed(&format!("process.argv[{i}]"), a, Some(Ty::Bytes))).collect::<Result<_>>()?,
+                argc: p.argc.as_deref().map(|a| typed("process.argc", a, Some(Ty::Bv(64)))).transpose()?,
+                stdin: p.stdin.as_deref().map(|a| typed("process.stdin", a, Some(Ty::Bytes))).transpose()?,
+                data_bytes: p.data_bytes.unwrap_or(65536),
+            }),
+            (None, true) => Some(ProcessSpec { argv0: "prog".into(), argv: Vec::new(), argc: None, stdin: None, data_bytes: 65536 }),
+            (None, false) => None,
+        };
+        if let Some(p) = &process_spec {
+            if p.data_bytes > 16 << 20 {
+                bail!("BINDING_MISMATCH: process.data_bytes is limited to 16 MiB");
+            }
+        }
+        let mut files = Vec::new();
+        for (name, ff) in &f.files {
+            let mut st = |v: &Option<String>, what: &str, want: Ty| -> Result<Option<String>> {
+                let Some(p) = v else { return Ok(None) };
+                let st = p.strip_prefix("after.").ok_or_else(|| anyhow!("BINDING_MISMATCH: file {name} {what} must be `after.<state>`"))?;
+                match contract.state.get(st) {
+                    Some(vt) if vt.ty == want => {}
+                    Some(vt) => bail!("BINDING_MISMATCH: file {name} {what} `{p}` is {} but must be {want}", vt.ty),
+                    None => bail!("BINDING_MISMATCH: file {name} {what} `{p}` is not a contract state variable"),
+                }
+                observed.push(st.to_string());
+                Ok(Some(st.to_string()))
+            };
+            files.push(FileSpec {
+                name: name.clone(),
+                path: ff.path.clone(),
+                init: ff.init.as_deref().map(|a| typed(&format!("file {name} init"), a, Some(Ty::Bytes))).transpose()?,
+                exists: ff.exists.as_deref().map(|a| typed(&format!("file {name} exists"), a, Some(Ty::Bool))).transpose()?,
+                observe_state: st(&ff.observe_as, "observe_as", Ty::Bytes)?,
+                exists_state: st(&ff.exists_as, "exists_as", Ty::Bool)?,
+            });
+        }
+        if files.iter().map(|f| &f.path).collect::<std::collections::BTreeSet<_>>().len() != files.len() {
+            bail!("BINDING_MISMATCH: two [files] entries have the same path");
         }
         for st in contract.state.keys() {
             if !observed.contains(st) {
-                bail!("BINDING_MISMATCH: contract state `{st}` is not observed by any region (observe_as)");
+                bail!("BINDING_MISMATCH: contract state `{st}` is not observed by any region or file (observe_as / exists_as)");
             }
         }
+        let dir = path.parent().unwrap_or(Path::new("."));
         Ok(Binding {
             id: f.id,
             digest,
             target,
-            entry_offset: f.entry.offset,
+            entry,
             code_regions: f.code_regions,
             arguments,
             results,
-            stack_bytes: f.stack.map(|s| s.bytes).unwrap_or(16384),
+            stack_bytes: f.stack.map(|s| s.bytes).unwrap_or(if process { 65536 } else { 16384 }),
             regions,
+            process: process_spec,
+            files,
+            link: f.link.map(|l| dir.join(l)),
         })
     }
 }

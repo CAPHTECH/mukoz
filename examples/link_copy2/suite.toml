@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "mem.copy_twice"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "copy_twice"
+random_cases = 128
+
+[generate.vars.dst]
+len = "len(input.src) + len(input.src)"

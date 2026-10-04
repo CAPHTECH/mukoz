@@ -1,6 +1,7 @@
 //! `mukoz` CLI (docs/07). Every command prints one JSON envelope.
 
 mod emu;
+mod image;
 mod expr;
 mod judge;
 mod plan;
@@ -13,7 +14,7 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 
 const USAGE: &str = "usage:
-  mukoz check <suite.toml> [--artifact <file>] [--fail-fast] [--gate] [--store <dir>]
+  mukoz check <suite.toml> [--artifact <file>] [--module <name>=<file>]... [--fail-fast] [--gate] [--store <dir>]
   mukoz show <id> [--store <dir>]
   mukoz replay <counterexample-id> [--artifact <file>] [--store <dir>]
   mukoz inspect <file>
@@ -34,7 +35,7 @@ fn parse_args() -> Result<Args, String> {
     while let Some(x) = it.next() {
         match x.as_str() {
             "--fail-fast" | "--gate" | "--help" | "-h" => a.flags.push(x),
-            "--artifact" | "--store" | "--case" => {
+            "--artifact" | "--store" | "--case" | "--module" => {
                 let v = it.next().ok_or(format!("{x} needs a value"))?;
                 a.opts.push((x, v));
             }
@@ -48,6 +49,14 @@ fn parse_args() -> Result<Args, String> {
 impl Args {
     fn opt(&self, k: &str) -> Option<&str> {
         self.opts.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str())
+    }
+    /// Every `--module name=path`.
+    fn modules(&self) -> Result<Vec<(String, PathBuf)>, String> {
+        self.opts
+            .iter()
+            .filter(|(n, _)| n == "--module")
+            .map(|(_, v)| v.split_once('=').map(|(n, p)| (n.to_string(), PathBuf::from(p))).ok_or(format!("--module needs name=path, got `{v}`")))
+            .collect()
     }
     fn flag(&self, k: &str) -> bool {
         self.flags.iter().any(|f| f == k)
@@ -98,9 +107,14 @@ fn real_main() -> i32 {
                 Ok(s) => s,
                 Err(e) => return fail("check", e, 4),
             };
+            let modules = match a.modules() {
+                Ok(m) => m,
+                Err(e) => return fail("check", anyhow::anyhow!("USAGE: {e}"), 2),
+            };
             let o = run::CheckOpts {
                 suite: Path::new(&a.pos[1]),
                 artifact: a.opt("--artifact").map(Path::new),
+                modules: &modules,
                 fail_fast: a.flag("--fail-fast"),
                 store: &st,
             };
