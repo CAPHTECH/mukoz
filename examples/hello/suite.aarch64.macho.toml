@@ -1,0 +1,11 @@
+schema = "mukoz.suite/1"
+id = "proc.hello.aarch64.macho"
+contract = "contract.toml"
+binding = "binding.aarch64.macho.toml"
+
+[generate]
+seed = "hello"
+random_cases = 4
+
+[artifact]
+path = "../../fixtures/process/hello_a64.macho"

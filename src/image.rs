@@ -81,6 +81,9 @@ pub struct Image {
     pub monitors: Vec<Monitor>,
     /// Digests of every file that went into the image (module name, sha256).
     pub parts: Vec<(String, String)>,
+    /// Mach-O LC_MAIN: the entry is a C `main(argc, argv, envp, apple)` whose return value is
+    /// the exit status (the emulator calls it with the return sentinel as its return address).
+    pub main_call: bool,
 }
 
 impl Image {
@@ -133,6 +136,7 @@ impl Image {
             modules: vec![Module { name: String::new(), base: CODE_BASE, size: len }],
             monitors: Vec::new(),
             parts: Vec::new(),
+            main_call: false,
         })
     }
 
@@ -219,7 +223,133 @@ impl Image {
         if !code_ranges.iter().any(|(lo, hi)| entry >= *lo && entry < *hi) {
             bail!("FORMAT_MISMATCH: ELF entry 0x{entry:x} is not in an executable segment");
         }
-        Ok(Image { segments, entry, code_ranges, modules: vec![Module { name: String::new(), base: 0, size: u64::MAX >> 1 }], monitors: Vec::new(), parts: Vec::new() })
+        Ok(Image { segments, entry, code_ranges, modules: vec![Module { name: String::new(), base: 0, size: u64::MAX >> 1 }], monitors: Vec::new(), parts: Vec::new(), main_call: false })
+    }
+}
+
+impl Image {
+    /// 64-bit Mach-O MH_EXECUTE, loaded at its own addresses (no slide). LC_MAIN or
+    /// LC_UNIXTHREAD give the entry. Imports (LC_LOAD_DYLIB, chained-fixup imports) are
+    /// UNRESOLVED_DEPENDENCY: dyld is not modeled, so the program must not need it.
+    pub fn macho(bytes: &[u8], isa: Isa) -> Result<Image> {
+        let u32_at = |o: usize| -> Result<u32> { Ok(u32::from_le_bytes(o.checked_add(4).and_then(|e| bytes.get(o..e)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: Mach-O truncated at 0x{o:x}"))?.try_into()?)) };
+        let u64_at = |o: usize| -> Result<u64> { Ok(u64::from_le_bytes(o.checked_add(8).and_then(|e| bytes.get(o..e)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: Mach-O truncated at 0x{o:x}"))?.try_into()?)) };
+        match u32_at(0)? {
+            0xfeedfacf => {}
+            0xfeedface | 0xcefaedfe | 0xcffaedfe => bail!("UNSUPPORTED_FEATURE: only 64-bit little-endian Mach-O"),
+            0xcafebabe | 0xbebafeca => bail!("UNSUPPORTED_FEATURE: universal (fat) Mach-O; extract one architecture first"),
+            _ => bail!("FORMAT_MISMATCH: not a Mach-O file"),
+        }
+        let cpu = u32_at(4)?;
+        let want = match isa {
+            Isa::X86_64 => 0x0100_0007,
+            Isa::Aarch64 => 0x0100_000c,
+        };
+        if cpu != want {
+            bail!("FORMAT_MISMATCH: Mach-O cputype 0x{cpu:x} does not match the target ISA");
+        }
+        if u32_at(12)? != 2 {
+            bail!("UNSUPPORTED_FEATURE: Mach-O filetype {} (only MH_EXECUTE)", u32_at(12)?);
+        }
+        let ncmds = u32_at(16)? as usize;
+        let sizeofcmds = u32_at(20)? as usize;
+        let cmds_end = 32usize.checked_add(sizeofcmds).filter(|e| *e <= bytes.len()).ok_or_else(|| anyhow!("FORMAT_MISMATCH: Mach-O load commands ({sizeofcmds} bytes) exceed the file"))?;
+        let mut off = 32usize;
+        let mut segments = Vec::new();
+        let mut code_ranges = Vec::new();
+        let mut text: Option<(u64, u64)> = None; // (vmaddr, fileoff) of __TEXT
+        let mut main_off: Option<u64> = None;
+        let mut thread_pc: Option<u64> = None;
+        for i in 0..ncmds {
+            if off.checked_add(8).is_none_or(|e| e > cmds_end) {
+                bail!("FORMAT_MISMATCH: Mach-O declares {ncmds} load commands but only {i} fit in sizeofcmds ({sizeofcmds} bytes)");
+            }
+            let cmd = u32_at(off)?;
+            let size = u32_at(off + 4)? as usize;
+            if size < 8 || size % 8 != 0 || off.checked_add(size).is_none_or(|e| e > cmds_end) {
+                bail!("FORMAT_MISMATCH: Mach-O load command {i} has cmdsize {size} (must be a positive multiple of 8 within sizeofcmds)");
+            }
+            let here = off;
+            off += size;
+            let off = here;
+            match cmd {
+                0x19 => {
+                    // LC_SEGMENT_64
+                    if size < 72 {
+                        bail!("FORMAT_MISMATCH: LC_SEGMENT_64 {i} is too short");
+                    }
+                    let name: String = bytes[off + 8..off + 24].iter().take_while(|b| **b != 0).map(|b| *b as char).collect();
+                    let vmaddr = u64_at(off + 24)?;
+                    let vmsize = u64_at(off + 32)?;
+                    let fileoff = u64_at(off + 40)? as usize;
+                    let filesize = u64_at(off + 48)? as usize;
+                    let initprot = u32_at(off + 60)?;
+                    if name == "__TEXT" {
+                        text = Some((vmaddr, fileoff as u64));
+                    }
+                    if vmsize == 0 || initprot == 0 {
+                        continue; // __PAGEZERO and other inaccessible reservations
+                    }
+                    let data = fileoff.checked_add(filesize).and_then(|e| bytes.get(fileoff..e)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: Mach-O segment {name} lies outside the file"))?.to_vec();
+                    if filesize as u64 > vmsize {
+                        bail!("FORMAT_MISMATCH: Mach-O segment {name} has filesize > vmsize");
+                    }
+                    let end = vmaddr.checked_add(vmsize).ok_or_else(|| anyhow!("FORMAT_MISMATCH: Mach-O segment {name} wraps the address space"))?;
+                    let below_stack = end <= RESERVED_LO && vmaddr >= 0x1_0000 && !(vmaddr < IMPORT_TABLE + 0x1000 && end > IMPORT_TABLE);
+                    let above_stack = vmaddr >= 0x1_0000_0000 && end <= 0x7fff_0000_0000;
+                    if !(below_stack || above_stack) {
+                        bail!("UNSUPPORTED_FEATURE: Mach-O segment {name} at [0x{vmaddr:x}, 0x{end:x}) overlaps memory Mukoz reserves");
+                    }
+                    if vmsize > 64 << 20 {
+                        bail!("UNSUPPORTED_FEATURE: Mach-O segment {name} is larger than 64 MiB");
+                    }
+                    let (r, w, x) = (initprot & 1 != 0, initprot & 2 != 0, initprot & 4 != 0);
+                    if x {
+                        code_ranges.push((vmaddr, vmaddr + filesize as u64));
+                    }
+                    segments.push(Segment { addr: vmaddr, data, mem_size: vmsize, read: r, write: w, exec: x, label: format!("Mach-O {name} ({}{}{})", if r { "r" } else { "-" }, if w { "w" } else { "-" }, if x { "x" } else { "-" }) });
+                }
+                0x8000_0028 => main_off = Some(u64_at(off + 8)?), // LC_MAIN: entryoff
+                0x5 => {
+                    // LC_UNIXTHREAD: flavor, count, state
+                    let flavor = u32_at(off + 8)?;
+                    let pc = match (isa, flavor) {
+                        (Isa::Aarch64, 6) => u64_at(off + 16 + 32 * 8)?, // ARM_THREAD_STATE64: x0..x28, fp, lr, sp, pc
+                        (Isa::X86_64, 4) => u64_at(off + 16 + 16 * 8)?,  // x86_THREAD_STATE64: rax..r15, rip
+                        _ => bail!("UNSUPPORTED_FEATURE: LC_UNIXTHREAD flavor {flavor}"),
+                    };
+                    thread_pc = Some(pc);
+                }
+                0xc | 0x18 | 0x8000_0018 | 0x8000_001f | 0x23 => bail!("UNRESOLVED_DEPENDENCY: Mach-O links a dylib (load command 0x{cmd:x}); dyld is not modeled"),
+                0x8000_0034 => {
+                    // LC_DYLD_CHAINED_FIXUPS: a header with a non-zero import count needs dyld.
+                    let dataoff = u32_at(off + 8)? as usize;
+                    let imports = u32_at(dataoff + 16)?;
+                    if imports != 0 {
+                        bail!("UNRESOLVED_DEPENDENCY: Mach-O has {imports} chained-fixup imports; dyld is not modeled");
+                    }
+                }
+                c if c & 0x8000_0000 != 0 && !matches!(c, 0x8000_0022 | 0x8000_0033) => {
+                    bail!("UNSUPPORTED_FEATURE: Mach-O load command 0x{c:x} is required for loading and not modeled")
+                }
+                _ => {} // symbols, UUID, build version, dylinker name, code signature, ...
+            }
+        }
+        let (entry, main_call) = match (main_off, thread_pc) {
+            (Some(o), _) => {
+                let (vm, fo) = text.ok_or_else(|| anyhow!("FORMAT_MISMATCH: LC_MAIN without a __TEXT segment"))?;
+                (vm.checked_add(o).and_then(|a| a.checked_sub(fo)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: LC_MAIN entryoff overflows"))?, true)
+            }
+            (None, Some(pc)) => (pc, false),
+            (None, None) => bail!("FORMAT_MISMATCH: Mach-O has neither LC_MAIN nor LC_UNIXTHREAD"),
+        };
+        if code_ranges.is_empty() {
+            bail!("FORMAT_MISMATCH: Mach-O has no executable segment");
+        }
+        if !code_ranges.iter().any(|(lo, hi)| entry >= *lo && entry < *hi) {
+            bail!("FORMAT_MISMATCH: Mach-O entry 0x{entry:x} is not in an executable segment");
+        }
+        Ok(Image { segments, entry, code_ranges, modules: vec![Module { name: String::new(), base: 0, size: u64::MAX >> 1 }], monitors: Vec::new(), parts: Vec::new(), main_call })
     }
 }
 
@@ -333,7 +463,7 @@ pub fn link(path: &Path, entry_symbol: &str, isa: Isa, opts: &LinkOptions, isa_r
         monitors.push(plan_monitor(sym, addr, contract, binding)?);
     }
     let _ = max_slot;
-    Ok((Image { segments, entry, code_ranges, modules, monitors, parts }, used))
+    Ok((Image { segments, entry, code_ranges, modules, monitors, parts, main_call: false }, used))
 }
 
 /// Work out how to recover the callee's contract values from registers and memory at the call.

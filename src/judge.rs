@@ -154,7 +154,7 @@ pub fn judge_case(contract: &Contract, binding: &Binding, case: &Case, obs: &Obs
     if binding.target.abi == "apple-arm64" {
         out.push(match &obs.stop {
             Stop::ReservedRegisterUsed { .. } => claim("machine.abi.reserved", Violated, Some("X18_USED")),
-            Stop::Returned | Stop::BadReturn { .. } => claim("machine.abi.reserved", SatisfiedInScope, None),
+            Stop::Returned | Stop::BadReturn { .. } | Stop::Exited { .. } => claim("machine.abi.reserved", SatisfiedInScope, None),
             _ => claim("machine.abi.reserved", Inconclusive, stopped_reason),
         });
     }

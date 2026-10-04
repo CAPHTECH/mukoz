@@ -242,6 +242,22 @@ enum Sys {
     Exit,
 }
 
+/// darwin-stdio/1: read, write, close and exit (BSD numbers; x86_64 adds the 0x2000000 class).
+/// open is not modeled (its flag values differ from Linux) and is reported as unsupported.
+fn sys_of_darwin(isa: Isa, nr: u64) -> Option<Sys> {
+    let n = match isa {
+        Isa::X86_64 => nr.checked_sub(0x200_0000)?,
+        Isa::Aarch64 => nr,
+    };
+    Some(match n {
+        1 => Sys::Exit,
+        3 => Sys::Read,
+        4 => Sys::Write,
+        6 => Sys::Close,
+        _ => return None,
+    })
+}
+
 fn sys_of(isa: Isa, nr: u64) -> Option<Sys> {
     Some(match (isa, nr) {
         (Isa::X86_64, 0) | (Isa::Aarch64, 63) => Sys::Read,
@@ -592,6 +608,7 @@ impl Executor<'_> {
         let process = self.binding.target.is_process();
         let info = isa_info(isa);
         let apple = self.binding.target.abi == "apple-arm64";
+        let darwin = self.binding.target.os == "darwin";
         let image = self.image;
         let ue = |e: uc_error| format!("engine: {e:?}");
         let mut uc = match isa {
@@ -741,6 +758,29 @@ impl Executor<'_> {
             uc.mem_write(sp, &block).map_err(ue)?;
             for g in info.gprs {
                 regs_in.insert(g.to_string(), 0);
+            }
+            let mut sp = sp;
+            if image.main_call {
+                // LC_MAIN: call main(argc, argv, envp, apple); its return goes to the sentinel.
+                let argv_at = sp + 8;
+                let envp_at = argv_at + 8 * ptrs.len() as u64 + 8;
+                let apple_at = envp_at + 8;
+                let regs: [&str; 4] = match isa {
+                    Isa::X86_64 => ["rdi", "rsi", "rdx", "rcx"],
+                    Isa::Aarch64 => ["x0", "x1", "x2", "x3"],
+                };
+                for (r, v) in regs.iter().zip([ptrs.len() as u64, argv_at, envp_at, apple_at]) {
+                    regs_in.insert(r.to_string(), v);
+                }
+                match isa {
+                    Isa::X86_64 => {
+                        sp -= 8;
+                        uc.mem_write(sp, &SENTINEL.to_le_bytes()).map_err(ue)?;
+                    }
+                    Isa::Aarch64 => {
+                        uc.reg_write(RegisterARM64::X30, SENTINEL).map_err(ue)?;
+                    }
+                }
             }
             entry_sp = sp;
             uc.reg_write(sp_id(isa), sp).map_err(ue)?;
@@ -928,7 +968,7 @@ impl Executor<'_> {
             uc.add_intr_hook(move |uc, intno| {
                 let pc_insn = st.borrow().ring.last().map(|(a, _)| *a).unwrap_or_else(|| uc.pc_read().unwrap_or(0));
                 if process && isa == Isa::Aarch64 && intno == 2 {
-                    let stop = syscall(uc, isa, &mut proc_rc.borrow_mut(), &allowed, &loc(pc_insn));
+                    let stop = syscall(uc, isa, darwin, &mut proc_rc.borrow_mut(), &allowed, &loc(pc_insn));
                     if let Some(stop) = stop {
                         let mut s = st.borrow_mut();
                         if s.stop.is_none() {
@@ -957,7 +997,7 @@ impl Executor<'_> {
                 uc.add_insn_sys_hook(kind, 0, u64::MAX, move |uc| {
                     let pc = st.borrow().ring.last().map(|(a, _)| *a).unwrap_or(0);
                     if process && name == "syscall" {
-                        if let Some(stop) = syscall(uc, isa, &mut proc_rc.borrow_mut(), &allowed, &loc(pc)) {
+                        if let Some(stop) = syscall(uc, isa, darwin, &mut proc_rc.borrow_mut(), &allowed, &loc(pc)) {
                             let mut s = st.borrow_mut();
                             if s.stop.is_none() {
                                 s.stop = Some(stop);
@@ -989,6 +1029,19 @@ impl Executor<'_> {
             stop
         } else {
             match res {
+                Ok(()) if pc == SENTINEL && process && image.main_call => {
+                    let v = uc.reg_read(match isa {
+                        Isa::X86_64 => reg_id(isa, "rax"),
+                        Isa::Aarch64 => reg_id(isa, "x0"),
+                    })
+                    .unwrap_or(0)
+                        & 0xff;
+                    if let Some(p) = proc_rc.borrow_mut().as_mut() {
+                        p.exit = Some(v);
+                        push_log(p, format!("return from main ({v})"));
+                    }
+                    Stop::Exited { status: v }
+                }
                 Ok(()) if pc == SENTINEL && !process => {
                     let expected = match isa {
                         Isa::X86_64 => entry_sp + 8,
@@ -1069,16 +1122,18 @@ fn read_path(uc: &Unicorn<()>, allowed: &[(u64, u64, bool, bool, String)], addr:
 
 /// Perform one system call against the modeled process state. Returns a stop on exit,
 /// forbidden or unsupported calls, bad buffers and output overflow.
-fn syscall(uc: &mut Unicorn<()>, isa: Isa, pr: &mut Option<Proc>, allowed: &[(u64, u64, bool, bool, String)], at: &str) -> Option<Stop> {
+fn syscall(uc: &mut Unicorn<()>, isa: Isa, darwin: bool, pr: &mut Option<Proc>, allowed: &[(u64, u64, bool, bool, String)], at: &str) -> Option<Stop> {
     let p = pr.as_mut()?;
-    let (nr_reg, arg_regs, ret_reg): (&str, [&str; 4], &str) = match isa {
-        Isa::X86_64 => ("rax", ["rdi", "rsi", "rdx", "r10"], "rax"),
-        Isa::Aarch64 => ("x8", ["x0", "x1", "x2", "x3"], "x0"),
+    let (nr_reg, arg_regs, ret_reg): (&str, [&str; 4], &str) = match (isa, darwin) {
+        (Isa::X86_64, _) => ("rax", ["rdi", "rsi", "rdx", "r10"], "rax"),
+        (Isa::Aarch64, false) => ("x8", ["x0", "x1", "x2", "x3"], "x0"),
+        (Isa::Aarch64, true) => ("x16", ["x0", "x1", "x2", "x3"], "x0"),
     };
     let nr = uc.reg_read(reg_id(isa, nr_reg)).unwrap_or(0);
     let a: Vec<u64> = arg_regs.iter().map(|r| uc.reg_read(reg_id(isa, r)).unwrap_or(0)).collect();
     p.count += 1;
-    let Some(sys) = sys_of(isa, nr) else {
+    let sys = if darwin { sys_of_darwin(isa, nr) } else { sys_of(isa, nr) };
+    let Some(sys) = sys else {
         return Some(Stop::UnsupportedSyscall { pc_offset: at.to_string(), number: nr });
     };
     let effect = match sys {
@@ -1241,7 +1296,24 @@ fn syscall(uc: &mut Unicorn<()>, isa: Isa, pr: &mut Option<Proc>, allowed: &[(u6
         }
     };
     push_log(p, format!("{effect}({}) = {}", a.iter().take(3).map(|x| format!("0x{x:x}")).collect::<Vec<_>>().join(", "), ret as i64));
-    let _ = uc.reg_write(reg_id(isa, ret_reg), ret);
+    if darwin {
+        // darwin-stdio/1: an error sets the carry flag and returns the positive errno.
+        let err = (ret as i64) < 0 && (ret as i64) >= -4095;
+        let v = if err { (ret as i64).unsigned_abs() } else { ret };
+        let _ = uc.reg_write(reg_id(isa, ret_reg), v);
+        match isa {
+            Isa::Aarch64 => {
+                let f = uc.reg_read(RegisterARM64::NZCV).unwrap_or(0);
+                let _ = uc.reg_write(RegisterARM64::NZCV, if err { f | 1 << 29 } else { f & !(1 << 29) });
+            }
+            Isa::X86_64 => {
+                let f = uc.reg_read(RegisterX86::RFLAGS).unwrap_or(0);
+                let _ = uc.reg_write(RegisterX86::RFLAGS, if err { f | 1 } else { f & !1 });
+            }
+        }
+    } else {
+        let _ = uc.reg_write(reg_id(isa, ret_reg), ret);
+    }
     None
 }
 

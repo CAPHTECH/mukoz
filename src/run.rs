@@ -68,6 +68,13 @@ pub fn load(suite_path: &Path, artifact: Option<&Path>, module_overrides: &[(Str
             let d = sha256_hex(&b);
             (img, p, b, d, Vec::new())
         }
+        (Entry::MachoEntry, None) if binding.target.format == Format::MachO => {
+            let p = given()?;
+            let b = read_artifact(&p)?;
+            let img = Image::macho(&b, binding.target.isa)?;
+            let d = sha256_hex(&b);
+            (img, p, b, d, Vec::new())
+        }
         (Entry::Offset(o), None) => {
             let p = given()?;
             let b = read_artifact(&p)?;

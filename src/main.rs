@@ -304,9 +304,27 @@ fn inspect(p: &Path, b: &[u8]) -> serde_json::Value {
                 };
             }
         }
-    } else if b.starts_with(&[0xcf, 0xfa, 0xed, 0xfe]) || b.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) {
+    } else if b.starts_with(&[0xcf, 0xfa, 0xed, 0xfe]) || b.starts_with(&[0xca, 0xfe, 0xba, 0xbe]) || b.starts_with(&[0xce, 0xfa, 0xed, 0xfe]) {
         v["format"] = json!("macho");
-        v["load"] = json!({ "ok": false, "code": "UNSUPPORTED_FEATURE", "error": "UNSUPPORTED_FEATURE: Mach-O is not loaded yet" });
+        let cpu = b.get(4..8).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+        let isa = match cpu {
+            Some(0x0100_000c) => spec::Isa::Aarch64,
+            _ => spec::Isa::X86_64,
+        };
+        v["load"] = match image::Image::macho(b, isa) {
+            Ok(img) => json!({
+                "ok": true,
+                "target": if isa == spec::Isa::Aarch64 { "aarch64/macho/apple-arm64/darwin" } else { "x86_64/macho/sysv-x86_64/darwin" },
+                "entry": format!("0x{:x}", img.entry),
+                "entry_kind": if img.main_call { "LC_MAIN (called as main; its return value is the exit status)" } else { "LC_UNIXTHREAD" },
+                "segments": img.segments.iter().map(|s| json!({ "addr": format!("0x{:x}", s.addr), "file_bytes": s.data.len(), "mem_bytes": s.mem_size, "flags": s.label })).collect::<Vec<_>>(),
+                "use": "as a process: target <isa>/macho/<abi>/darwin with [entry] kind = \"macho_entry\" (darwin-stdio/1: read, write, close, exit)",
+            }),
+            Err(e) => {
+                let m = format!("{e:#}");
+                json!({ "ok": false, "code": error_code(&m), "error": m })
+            }
+        };
     } else if b.starts_with(b"MZ") {
         v["format"] = json!("pe");
         v["load"] = json!({ "ok": false, "code": "UNSUPPORTED_FEATURE", "error": "UNSUPPORTED_FEATURE: PE is not loaded" });

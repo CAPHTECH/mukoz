@@ -323,6 +323,7 @@ pub enum Isa {
 pub enum Format {
     Raw,
     Elf,
+    MachO,
 }
 
 #[derive(Debug, Clone)]
@@ -337,7 +338,7 @@ pub struct Target {
 
 impl Target {
     pub fn is_process(&self) -> bool {
-        self.os == "linux"
+        self.os == "linux" || self.os == "darwin"
     }
 }
 
@@ -355,15 +356,17 @@ impl Target {
         let format = match parts[1] {
             "raw" => Format::Raw,
             "elf" => Format::Elf,
-            f => bail!("UNSUPPORTED_FEATURE: format `{f}` (raw or elf)"),
+            "macho" => Format::MachO,
+            f => bail!("UNSUPPORTED_FEATURE: format `{f}` (raw, elf or macho)"),
         };
         let os = parts[3];
         match (format, os) {
-            (Format::Raw, "none") | (Format::Raw, "linux") | (Format::Elf, "linux") => {}
-            _ => bail!("UNSUPPORTED_FEATURE: `{s}` (implemented: <isa>/raw/<abi>/none routines, <isa>/raw|elf/<abi>/linux processes)"),
+            (Format::Raw, "none") | (Format::Raw, "linux") | (Format::Elf, "linux") | (Format::MachO, "darwin") => {}
+            _ => bail!("UNSUPPORTED_FEATURE: `{s}` (implemented: <isa>/raw/<abi>/none routines, <isa>/raw|elf/<abi>/linux and <isa>/macho/<abi>/darwin processes)"),
         }
         let ok = match os {
             "none" => matches!((isa, parts[2]), (Isa::X86_64, "sysv-x86_64") | (Isa::Aarch64, "aapcs64") | (Isa::Aarch64, "apple-arm64")),
+            "darwin" => matches!((isa, parts[2]), (Isa::X86_64, "sysv-x86_64") | (Isa::Aarch64, "apple-arm64")),
             _ => matches!((isa, parts[2]), (Isa::X86_64, "sysv-x86_64") | (Isa::Aarch64, "aapcs64")),
         };
         if !ok {
@@ -395,6 +398,8 @@ pub struct Region {
 pub enum Entry {
     Offset(u64),
     ElfEntry,
+    /// LC_MAIN or LC_UNIXTHREAD of a Mach-O executable.
+    MachoEntry,
     /// `module.symbol` from the link file.
     Symbol(String),
 }
@@ -455,6 +460,7 @@ impl Binding {
         let entry = match (f.entry.kind.as_str(), f.entry.offset, &f.entry.symbol) {
             ("raw_offset", Some(o), None) if target.format == Format::Raw && f.link.is_none() => Entry::Offset(o),
             ("elf_entry", None, None) if target.format == Format::Elf => Entry::ElfEntry,
+            ("macho_entry", None, None) if target.format == Format::MachO => Entry::MachoEntry,
             ("symbol", None, Some(sym)) if target.format == Format::Raw && f.link.is_some() => Entry::Symbol(sym.clone()),
             (k, ..) => bail!(
                 "BINDING_MISMATCH: entry kind `{k}` with these fields does not fit `{}` (raw: kind = \"raw_offset\", offset = N; \

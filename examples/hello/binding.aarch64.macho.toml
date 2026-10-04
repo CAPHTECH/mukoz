@@ -1,0 +1,17 @@
+schema = "mukoz.binding/1"
+id = "proc.hello@aarch64.macho"
+contract = "proc.hello"
+target = "aarch64/macho/apple-arm64/darwin"
+
+[entry]
+kind = "macho_entry"
+
+[process]
+argv0 = "hello"
+
+[results]
+code = "exit_status"
+out = "stdout"
+
+[completion]
+kind = "exit"

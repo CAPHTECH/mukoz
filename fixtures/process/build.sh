@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build the process fixtures. x86-64: GNU as / gcc (static, no libc, no PIE).
-# AArch64: hand-encoded words (no AArch64 toolchain on the build host), wrapped
-# into a minimal ELF by mkelf.py. Writes manifest.txt with sizes and sha256.
+# AArch64: hand-encoded words wrapped into a minimal ELF by mkelf.py; Mach-O
+# files by mkmacho.py (rustc aarch64 target + llvm-objcopy for the code). Writes manifest.txt with sizes and sha256.
 set -eu
 cd "$(dirname "$0")"
 tmp=$(mktemp -d)
@@ -19,7 +19,8 @@ gcc $CF -DMUT_NOAPPEND -o todo_x86_mut_noappend.elf todo.c
 gcc $CF -DMUT_STAT -o todo_x86_mut_stat.elf todo.c
 python3 mkelf.py
 python3 mkbroken.py
+python3 mkmacho.py
 : > manifest.txt
 echo "# toolchain: $(as --version | head -1); $(gcc --version | head -1)" >> manifest.txt
-for f in *.bin *.elf; do echo "$f $(wc -c < "$f") $(sha256sum "$f" | cut -d' ' -f1)" >> manifest.txt; done
+for f in *.bin *.elf *.macho; do echo "$f $(wc -c < "$f") $(sha256sum "$f" | cut -d' ' -f1)" >> manifest.txt; done
 cat manifest.txt
