@@ -243,3 +243,24 @@ fn boundary_product_fallback_is_reported() {
     assert_eq!(scope["input_summary"]["input.a"]["type"], "bv64", "{scope:#}");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// Region placement varies per case by default. A bug on the misaligned path is invisible
+// when every region starts 16-byte aligned (the 0.1 behaviour found by a contract author).
+#[test]
+fn varied_placement_finds_alignment_dependent_bugs() {
+    let v = check("examples/copy/suite.x86_64.toml", &fx("copy_mut_unaligned"), &[]);
+    assert_eq!(admission(&v), "REJECT", "{:#}", v["data"]["assessment"]);
+    assert_eq!(violated(&v), vec!["mem.copy/copied".to_string()]);
+    // With aligned placement the same binary passes: the blind spot this option removes.
+    let dir = tempdir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let ex = std::fs::canonicalize("examples/copy").unwrap();
+    for f in ["contract.toml", "binding.x86_64.toml"] {
+        std::fs::copy(ex.join(f), format!("{dir}/{f}")).unwrap();
+    }
+    let s = std::fs::read_to_string(ex.join("suite.x86_64.toml")).unwrap().replace("[generate]", "[generate]\nplacement = \"aligned\"");
+    std::fs::write(format!("{dir}/suite.toml"), s).unwrap();
+    let a = check(&format!("{dir}/suite.toml"), &fx("copy_mut_unaligned"), &[]);
+    assert_eq!(admission(&a), "ACCEPT_WITHIN_SCOPE", "{:#}", a["data"]["assessment"]);
+    let _ = std::fs::remove_dir_all(dir);
+}

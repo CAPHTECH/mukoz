@@ -28,3 +28,4 @@
 | 2026-10-04 | R | 再設計: (1) 有効ケースが下限 min(100, 生成数/4) 未満なら HOLD `LOW_ADMITTED_CASES`、`[limits] min_admitted_cases` で明示上書き、捨てた件数を limitations に常に出す (2)(3) 型に合わない生成器項目・値域・max_len 超過はエラー (4) docs/04 §4.10・docs/07 に 0.1 の実装範囲を固定。受け入れテスト2本追加、(1) は規則を無効化すると落ちることを確認 |
 | 2026-10-04 | 4→R | 契約作成の試験 memmove: 作成契約は参照 ACCEPT・変異 REJECT(1回)。追加の報告: 境界値の直積の黙った縮小、生成入力が見えない、部分範囲の権限・配置生成・let がない |
 | 2026-10-04 | R | 再設計: 直積の縮小を plan_stats.boundary_mode と limitations に出す。scope.input_summary(変数ごとの生成範囲)を追加。受け入れテスト1本、報告を消すと落ちることを確認。設計の不足4件を docs/11 に未解決として記録 |
+| 2026-10-04 | R | 再設計: 領域の開始 alignment を case ごとに変える(`placement = "varied"` 既定、seed 由来で再現可能)。fixture copy_mut_unaligned(整列していない経路だけ1バイト不足)で aligned=ACCEPT / varied=REJECT を確認。全課題の参照20件 ACCEPT・変異21件 REJECT を再確認(各1回) |

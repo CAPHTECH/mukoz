@@ -160,6 +160,8 @@ pub struct Executor<'a> {
     pub binding: &'a Binding,
     pub insn_limit: u64,
     pub timeout_ms: u64,
+    /// Vary each region's start alignment per case (derived from the case seed, so replays match).
+    pub vary_placement: bool,
 }
 
 fn rel(addr: u64) -> String {
@@ -232,6 +234,8 @@ impl Executor<'_> {
         let mut placed: Vec<PlacedRegion> = Vec::new();
         let mut filler = SplitMix64::new(case.filler_seed);
         let mut inits: Vec<(u64, Vec<u8>)> = Vec::new();
+        // Separate stream so that varying placement does not change register filler values.
+        let mut placement = SplitMix64::new(case.filler_seed ^ 0x9e37_79b9_7f4a_7c15);
         for (i, r) in self.binding.regions.iter().enumerate() {
             let cx = EvalCtx { vars: &case.values, region_addrs: &empty };
             let size = match expr::eval(&r.size, &cx) {
@@ -255,9 +259,15 @@ impl Executor<'_> {
                 return Err(format!("BINDING_MISMATCH: region {} init has {} bytes but size is {size}", r.name, init.len()));
             }
             let map_base = REGION_BASE + i as u64 * REGION_STRIDE;
-            let map_size = page_up(size.max(1)) + PAGE;
-            // Place the data so that it ends 16-byte aligned near the end of the mapping.
-            let addr = map_base + map_size - PAGE - ((size + 15) / 16 * 16);
+            let map_size = page_up(size.max(1) + 16) + PAGE;
+            let addr = if self.vary_placement {
+                // Start at any of the 16 alignments below 16 (end position varies accordingly).
+                let pad = placement.next() % 16;
+                map_base + map_size - PAGE - size - pad
+            } else {
+                // The data starts 16-byte aligned near the end of the mapping.
+                map_base + map_size - PAGE - ((size + 15) / 16 * 16)
+            };
             uc.mem_map(map_base, map_size as usize, Permission::READ | Permission::WRITE).map_err(ue)?;
             inits.push((addr, init));
             addrs.insert(r.name.clone(), addr);

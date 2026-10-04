@@ -460,6 +460,7 @@ struct GenerateFile {
     seed: Option<String>,
     boundary: Option<String>,
     random_cases: Option<u64>,
+    placement: Option<String>,
     #[serde(default)]
     vars: BTreeMap<String, VarGenFile>,
 }
@@ -523,6 +524,7 @@ pub struct Suite {
     pub vars: BTreeMap<String, VarGenFile>,
     pub limits: Limits,
     pub include_regressions: bool,
+    pub vary_placement: bool,
 }
 
 pub const MAX_CASES_HARD: u64 = 8192;
@@ -547,6 +549,11 @@ impl Suite {
             Some("none") => false,
             Some(o) => bail!("generate.boundary must be `product` or `none`, got `{o}`"),
         };
+        let vary_placement = match f.generate.placement.as_deref() {
+            None | Some("varied") => true,
+            Some("aligned") => false,
+            Some(o) => bail!("generate.placement must be `varied` or `aligned`, got `{o}`"),
+        };
         let max_cases = f.limits.max_cases.unwrap_or(MAX_CASES_HARD);
         if max_cases > MAX_CASES_HARD {
             bail!("limits.max_cases {max_cases} exceeds the hard limit {MAX_CASES_HARD}");
@@ -569,6 +576,7 @@ impl Suite {
                 min_admitted_cases: f.limits.min_admitted_cases,
             },
             include_regressions: f.regressions.include,
+            vary_placement,
         })
     }
 }

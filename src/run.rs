@@ -112,6 +112,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
         binding: &l.binding,
         insn_limit: l.suite.limits.instructions_per_case,
         timeout_ms: l.suite.limits.wall_ms_per_case,
+        vary_placement: l.suite.vary_placement,
     };
     let mut properties = judge::machine_properties(&l.binding);
     properties.extend(judge::semantic_properties(&l.contract));
@@ -270,7 +271,7 @@ pub fn replay(store: &Store, cx_id: &str, artifact: Option<&Path>) -> Result<ser
     }
     let seed = item["case"]["filler_seed"].as_str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
     let case = Case { id: item["case"]["id"].as_str().unwrap_or("replay").to_string(), origin: plan::Origin::Regression, values, filler_seed: seed };
-    let exec = Executor { code: &l.artifact, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case };
+    let exec = Executor { code: &l.artifact, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case, vary_placement: l.suite.vary_placement };
     let obs = exec.run(&case);
     let claims = judge::judge_case(&l.contract, &l.binding, &case, &obs);
     let property = item["property"].as_str().unwrap_or_default();

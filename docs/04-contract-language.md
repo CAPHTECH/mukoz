@@ -430,7 +430,7 @@ AIが生成と検査を繰り返すとき、前に見つかった失敗が再発
 | 停止しない | `must_return` で命令数の上限に達したら HOLD(`BUDGET_EXHAUSTED`)。停止しないことは有限の実行では示せないため REJECT にしない(I1) |
 | 依存する生成 | `len` / `max` が参照する変数を先に生成する(循環はエラー)。`len` が契約の `max_len` を超えたら `PLAN_ERROR`(切り詰めない) |
 | `[limits]` | `instructions_per_case`・`wall_ms_per_case`・`max_cases`(上限 8192)・`min_admitted_cases`。`guest_memory_bytes` / `trace_bytes_per_case` は未実装 |
-| 領域の配置の生成(alignment・相対位置) | 未実装。各領域は別々の固定番地に置く |
+| 領域の配置の生成 | `[generate] placement = "varied"`(既定): 各領域の開始 alignment を case ごとに 0〜15 バイトずらす(case の seed から導くので、再実行・回帰でも同じ配置になる)。`"aligned"` で 16 バイト境界に固定。領域どうしの相対位置・上位番地への配置は未実装 |
 | machine claim | `machine.returned`(SP の復元を含む)・`machine.abi.callee_saved`・`machine.abi.flags`(x86 の DF)・`machine.abi.reserved`(apple-arm64 の x18 のみ)・`machine.memory.access`・`effects.no_forbidden`。`machine.abi.stack` は独立の claim ではなく `machine.returned` に含む |
 | 式 | 4.4 の型付き式。整数リテラルは `bvN(...)` で幅を明示する(契約内の裸の整数は `CONTRACT_TYPE_ERROR`)。`mukoz expr check` は構文だけを検査し、型は契約の読込み時に検査する |
 | `forall` / `count` の範囲 | 1式あたり 65,536 まで |
