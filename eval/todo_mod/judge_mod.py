@@ -40,7 +40,7 @@ for d in sys.argv[3:]:
             rec["mukoz"] = mz
             rec["mukoz_on_final"] = mz["main"][0]
     if name[1] == "A":
-        rec["mukoz_check_runs"] = len(glob.glob(os.path.join(d, "**", ".mukoz", "items", "run-*.json"), recursive=True)) + len(glob.glob(os.path.join(d, ".mukoz", "items", "run-*.json")))
+        rec["mukoz_check_runs"] = len(glob.glob(os.path.join(d, "**", ".mukoz", "items", "run-*.json"), recursive=True))
     print(json.dumps(rec))
     with open(os.path.join(exp, "results.jsonl"), "a") as f:
         f.write(json.dumps(rec) + "\n")
