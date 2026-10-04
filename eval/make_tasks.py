@@ -396,6 +396,66 @@ T["count_byte_fast"]["spec"] = T["count_byte"]["spec"].replace("uint64_t count_b
     "a loop that handles every byte individually is not acceptable. At most 7 leftover bytes at the end may be handled one at a time. "
     "Unaligned 64-bit loads are allowed, but never read outside buf[0..n).")
 
+# --- utf8_count: per-position formulation (UTF-8 is self-synchronizing), no fold needed.
+def _u8():
+    b = lambda i: f"input.buf[{i}]"
+    cont = lambda x: f"(({x} & bv8(0xc0)) == bv8(0x80))"
+    ll = lambda x: (f"ite(ult({x}, bv8(0x80)), bv64(1), ite(ult({x}, bv8(0xc2)), bv64(0), ite(ult({x}, bv8(0xe0)), bv64(2), "
+                    f"ite(ult({x}, bv8(0xf0)), bv64(3), ite(ult({x}, bv8(0xf5)), bv64(4), bv64(0))))))")
+    lo2 = lambda x: f"ite({x} == bv8(0xe0), bv8(0xa0), ite({x} == bv8(0xf0), bv8(0x90), bv8(0x80)))"
+    hi2 = lambda x: f"ite({x} == bv8(0xed), bv8(0x9f), ite({x} == bv8(0xf4), bv8(0x8f), bv8(0xbf)))"
+    n = "len(input.buf)"
+    x = b("i")
+    k = ll(x)
+    # Lead (non-continuation) at i: known length, fits, second byte in range, rest are continuations.
+    lead = (f"ite({k} == bv64(0), false, ite(ugt(i + {k}, {n}), false, ite(ult({k}, bv64(2)), true, "
+            f"ite(ult({b('i + bv64(1)')}, {lo2(x)}), false, ite(ugt({b('i + bv64(1)')}, {hi2(x)}), false, "
+            f"ite(ult({k}, bv64(3)), true, ite(not {cont(b('i + bv64(2)'))}, false, "
+            f"ite(ult({k}, bv64(4)), true, {cont(b('i + bv64(3)'))}))))))))")
+    def back(d, rest):
+        y = b(f"i - bv64({d})")
+        return f"ite(ult(i, bv64({d})), false, ite(not {cont(y)}, ugt({ll(y)}, bv64({d})), {rest}))"
+    contin = back(1, back(2, back(3, "false")))
+    valid = f"(forall i in bv64(0)..{n}: ite({cont(x)}, {contin}, {lead}))"
+    count = f"(count i in bv64(0)..{n}: not {cont(x)})"
+    return valid, count
+_valid, _count = _u8()
+_V = ["41", "7f", "00", "20", "c280", "dfbf", "c3a9", "e0a080", "efbfbf", "ed9fbf", "ee8080", "e38182", "f0908080", "f48fbfbf", "f1808080", "f09f9880"]
+_I = ["80", "bf", "c080", "c1bf", "e09fbf", "eda080", "edbfbf", "f08fbfbf", "f4908080", "f5808080", "ff", "fe", "c2", "e180", "f09080"]
+T["utf8_count"] = dict(
+ spec="uint64_t utf8_count(const uint8_t *buf, uint64_t n): if buf[0..n) is well-formed UTF-8 (RFC 3629 / Unicode Table 3-7: "
+      "no overlong forms, no surrogates U+D800-U+DFFF, nothing above U+10FFFF, no truncated or stray bytes), return the number of "
+      "code points; otherwise return 0xffffffffffffffff. buf points to exactly n readable bytes (n may be 0).",
+ contract=f"""
+[inputs]
+buf = {{ type = "bytes", max_len = 256 }}
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "valid_count"
+expr = "ite({_valid}, result.value == {_count}, true)"
+
+[[ensures]]
+id = "invalid_all_ones"
+expr = "ite({_valid}, true, result.value == bv64(0xffffffffffffffff))"
+""",
+ binding="""
+[arguments]
+rdi = "addr(buf)"
+rsi = "len(input.buf)"
+
+[results]
+value = "rax"
+
+[regions.buf]
+size = "len(input.buf)"
+init = "input.buf"
+access = "r"
+""",
+ suite_extra="\n[generate.vars.buf]\npieces = [" + ", ".join([f'"{v}:100"' for v in _V] + [f'"{v}:1"' for v in _I]) + "]\n")
+
 for name, t in T.items():
     d = os.path.join("tasks", name)
     os.makedirs(d, exist_ok=True)
@@ -420,7 +480,7 @@ A64_ABI = ("Target CPU: AArch64 (ARMv8-A, little-endian). Calling convention: AA
            "Use only base integer A64 instructions (no SIMD/FP). The routine must not make system calls and must only touch the memory "
            "described below (plus its own stack below the incoming sp).")
 A64_REG = {"rdi": "x0", "rsi": "x1", "rdx": "x2", "rcx": "x3", "r8": "x4", "r9": "x5", "rax": "x0"}
-A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64", "count_byte_fast"]
+A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64", "count_byte_fast", "utf8_count"]
 for name in A64_TASKS:
     t = T[name]
     d = os.path.join("tasks", name + "_a64")

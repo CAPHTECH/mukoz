@@ -89,6 +89,7 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
         let g = &s.generator;
         let bad = |field: &str, ty: &str| anyhow!("generate.vars.{}.{field} does not apply to a {ty} variable", s.name);
         match s.vt.ty {
+            Ty::Bool | Ty::Bv(_) if !g.pieces.is_empty() => return Err(bad("pieces", "non-bytes")),
             Ty::Bool => {
                 if g.len.is_some() { return Err(bad("len", "bool")); }
                 if g.max.is_some() { return Err(bad("max", "bool")); }
@@ -102,6 +103,12 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
             Ty::Bytes => {
                 if g.max.is_some() {
                     return Err(anyhow!("generate.vars.{}.max does not apply to a bytes variable (use `len`, or max_len in the contract)", s.name));
+                }
+                if !g.pieces.is_empty() && g.bytes.is_some() {
+                    bail!("generate.vars.{}: use either `pieces` or `bytes`, not both", s.name);
+                }
+                for p in &g.pieces {
+                    parse_piece(p).map_err(|m| anyhow!("generate.vars.{}.pieces: {m}", s.name))?;
                 }
                 if let Some(a) = &g.bytes {
                     if a != "nonzero" && a != "ascii" {
@@ -207,7 +214,37 @@ fn random_bv(rng: &mut SplitMix64, w: u8) -> u64 {
     }
 }
 
-fn random_bytes(rng: &mut SplitMix64, len: u64, alphabet: Option<&str>) -> Vec<u8> {
+/// `"c280"` or `"c280:20"` (hex fragment with an optional integer weight, default 1).
+fn parse_piece(p: &str) -> Result<(Vec<u8>, u64), String> {
+    let (h, w) = match p.split_once(':') {
+        Some((h, w)) => (h, w.parse::<u64>().map_err(|_| format!("bad weight in `{p}`"))?),
+        None => (p, 1),
+    };
+    match expr::unhex(h) {
+        Some(b) if !b.is_empty() && w > 0 => Ok((b, w)),
+        _ => Err(format!("`{p}` is not a non-empty hex fragment with a positive weight")),
+    }
+}
+
+fn random_bytes(rng: &mut SplitMix64, len: u64, g: &VarGenFile) -> Vec<u8> {
+    if !g.pieces.is_empty() {
+        let pieces: Vec<(Vec<u8>, u64)> = g.pieces.iter().filter_map(|p| parse_piece(p).ok()).collect();
+        let total: u64 = pieces.iter().map(|(_, w)| w).sum();
+        let mut out = Vec::new();
+        while (out.len() as u64) < len {
+            let mut r = rng.below(total);
+            for (b, w) in &pieces {
+                if r < *w {
+                    out.extend_from_slice(b);
+                    break;
+                }
+                r -= w;
+            }
+        }
+        out.truncate(len as usize);
+        return out;
+    }
+    let alphabet = g.bytes.as_deref();
     (0..len)
         .map(|_| match alphabet {
             Some("nonzero") => 1 + rng.below(255) as u8,
@@ -286,7 +323,7 @@ fn candidates(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Vec<
             };
             for n in lens {
                 check_len(slot, n)?;
-                out.push(Value::Bytes(random_bytes(rng, n, slot.generator.bytes.as_deref())));
+                out.push(Value::Bytes(random_bytes(rng, n, &slot.generator)));
             }
             Ok(out)
         }
@@ -308,7 +345,7 @@ fn random_value(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Va
                 }
                 None => rng.below(slot.vt.max_len + 1),
             };
-            Value::Bytes(random_bytes(rng, n, slot.generator.bytes.as_deref()))
+            Value::Bytes(random_bytes(rng, n, &slot.generator))
         }
     })
 }

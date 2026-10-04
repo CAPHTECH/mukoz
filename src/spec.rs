@@ -477,6 +477,10 @@ pub struct VarGenFile {
     pub bytes: Option<String>,
     /// Upper bound (inclusive) for bitvector variables; may refer to earlier variables.
     pub max: Option<String>,
+    /// Bytes variables: build values by concatenating randomly chosen hex fragments
+    /// (then cutting to the chosen length), e.g. valid and invalid UTF-8 sequences.
+    #[serde(default)]
+    pub pieces: Vec<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]

@@ -151,6 +151,52 @@ def t_count_byte_fast(rng):
     return [buf], ["p0", n, garbage_upper(rng, c, 8)], \
         lambda r: None if r["rax"] == want else f"rax={r['rax']} want {want} (n={n}, c={c:#x})"
 
+def _utf8_valid_string(rng, n_cp):
+    edges = [0, 0x7f, 0x80, 0x7ff, 0x800, 0xfff, 0x1000, 0xd7ff, 0xe000, 0xfffd, 0xffff, 0x10000, 0x3ffff, 0x40000, 0x10ffff]
+    out = []
+    for _ in range(n_cp):
+        r = rng.random()
+        if r < 0.3: cp = rng.choice(edges)
+        elif r < 0.55: cp = rng.randrange(0, 0x80)
+        elif r < 0.7: cp = rng.randrange(0x80, 0x800)
+        elif r < 0.85: cp = rng.choice([rng.randrange(0x800, 0xd800), rng.randrange(0xe000, 0x10000)])
+        else: cp = rng.randrange(0x10000, 0x110000)
+        out.append(chr(cp))
+    return "".join(out).encode("utf-8")
+
+def _utf8_corrupt(rng, b):
+    b = bytearray(b)
+    kind = rng.randrange(9)
+    pos = rng.randrange(0, len(b) + 1)
+    bad = [b"\xc0\x80", b"\xc1\xbf", b"\xe0\x80\x80", b"\xe0\x9f\xbf", b"\xed\xa0\x80", b"\xed\xbf\xbf",
+           b"\xf0\x80\x80\x80", b"\xf0\x8f\xbf\xbf", b"\xf4\x90\x80\x80", b"\xf5\x80\x80\x80", b"\xf8\x88\x80\x80\x80",
+           b"\xff", b"\xfe", b"\x80", b"\xbf", b"\xc2", b"\xe1\x80", b"\xf1\x80\x80", b"\xc2\x41", b"\xe1\x41\x80", b"\xe1\x80\x41"]
+    if kind <= 3:
+        b[pos:pos] = rng.choice(bad)
+    elif kind == 4 and b:
+        del b[rng.randrange(len(b))]
+    elif kind == 5 and b:
+        b[rng.randrange(len(b))] = rng.randrange(256)
+    elif kind == 6:
+        b += rng.choice([b"\xc2", b"\xe1\x80", b"\xf0\x90", b"\xf0\x90\x80"])
+    elif kind == 7:
+        b[pos:pos] = bytes([rng.randrange(0x80, 0xc0)])
+    else:
+        b[pos:pos] = rng.choice(bad)
+    return bytes(b)
+
+def t_utf8_count(rng):
+    n_cp = rng.choice([0, 1, 2, 3, rng.randrange(0, 40), rng.randrange(0, 120)])
+    buf = _utf8_valid_string(rng, n_cp)
+    if rng.random() < 0.5:
+        buf = _utf8_corrupt(rng, buf)
+    try:
+        want = len(buf.decode("utf-8"))
+    except UnicodeDecodeError:
+        want = M64
+    n = len(buf)
+    return [buf], ["p0", n], lambda r: None if r["rax"] == want else f"rax={r['rax']:#x} want {want:#x} (n={n}, buf={buf.hex()[:80]})"
+
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
 def judge_a64(task, binary, cases, seed):

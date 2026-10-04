@@ -33,3 +33,4 @@
 | 2026-10-04 | 4 | 反例から直すループを初めて観測: gcc -O3 base64 の修正、docs/12 だけを渡した条件A で REJECT → 性質IDと反例の入出力から箇所を特定 → ACCEPT。最終判定 PASS(A・B とも、各1回) |
 | 2026-10-04 | R | 再設計: 違反の detail に why_false(forall の反例添字、偽の比較の両辺、添字の値、`and` は偽の側だけ)を追加。式と値の表示を120文字で打ち切る。単体テスト1本。docs/12 に recent_instructions の限界を明記 |
 | 2026-10-04 | 4 | 新しい診断で再確認(RHA): PASS。対照の REJECT で why_false が正しい箇所(奇数組・ビット1)を指したと報告。docs/12 に出力の形と終了コードを追記(--gate の値は実装で確認して記載) |
+| 2026-10-04 | E1 | 次の目標: 一度では正しく書けない規模で Mukoz が到達率を上げるか。課題 utf8_count(x86・aarch64)を追加: 契約は forall による位置ごとの条件(fold 不要)。生成器に重み付き断片 `pieces` を追加。gcc 参照 ACCEPT/PASS、変異4種(overlong・サロゲート・U+10FFFF超・途中切れ)は Mukoz REJECT/隠し判定 FAIL で一致(各1回)。生成ケースの妥当 UTF-8 は 246/1028 |
