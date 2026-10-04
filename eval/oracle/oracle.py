@@ -227,6 +227,65 @@ def t_utf8_to_utf16(rng):
 def t_utf8_to_utf16_fast(rng):
     return t_utf8_to_utf16(rng)
 
+def _b64_corrupt(rng, t):
+    t = bytearray(t)
+    k = rng.randrange(7)
+    if k == 0 and t: t[rng.randrange(len(t))] = rng.choice(b"!*-_.= \n\x00\x80")
+    elif k == 1: t += b"A" * rng.randrange(1, 4)
+    elif k == 2 and len(t) >= 5: t[rng.randrange(len(t) - 4)] = ord("=")
+    elif k == 3 and t.endswith(b"=") and len(t) >= 2:
+        i = len(t) - (2 if t.endswith(b"==") else 1) - 1
+        t[i] = ord(rng.choice("BCDEFGHIJKLMNOPQRSTUVWXYZbcdefghijklmnopqrstuvwxyz0123456789+/"))
+    elif k == 4: t = t[:-1] if t else t
+    elif k == 5 and len(t) >= 4: t[-4:] = rng.choice([b"A===", b"====", b"AA=A", b"=AAA"])
+    else: t += rng.choice([b"====", b"A=", b"AB=="])
+    return bytes(t)
+
+def t_codec(rng):
+    import base64
+    op = rng.choice([0, 0, 1, 1, 2, 3, 3, rng.choice([4, 5, 0xffffffffffffffff, 1 << 32])])
+    if op == 0:
+        src = _utf8_valid_string(rng, rng.choice([0, 1, rng.randrange(0, 30), rng.randrange(0, 60)]))
+        if rng.random() < 0.4: src = _utf8_corrupt(rng, src)
+        try: want = src.decode("utf-8").encode("utf-16-le"); ret = len(want) // 2
+        except UnicodeDecodeError: want, ret = None, M64
+    elif op == 1:
+        src = _utf8_valid_string(rng, rng.choice([0, 1, rng.randrange(0, 30), rng.randrange(0, 60)])).decode("utf-8").encode("utf-16-le")
+        if rng.random() < 0.4:
+            src = bytearray(src); k = rng.randrange(5); pos = rng.randrange(0, len(src) // 2 + 1) * 2
+            if k == 0: src[pos:pos] = rng.choice([b"\x00\xd8", b"\xff\xdb", b"\x00\xdc", b"\xff\xdf"])
+            elif k == 1: src += b"\x41"
+            elif k == 2: src[pos:pos] = b"\x00\xdc\x00\xd8"
+            elif k == 3: src += b"\x3d\xd8"
+            else: src[pos:pos] = b"\x00\xd8\x41\x00"
+            src = bytes(src)
+        try: want = src.decode("utf-16-le").encode("utf-8"); ret = len(want)
+        except UnicodeDecodeError: want, ret = None, M64
+    elif op == 2:
+        src = rbytes(rng, rng.choice([0, 1, 2, 3, rng.randrange(0, 100)]))
+        want = base64.b64encode(src); ret = len(want)
+    elif op == 3:
+        src = base64.b64encode(rbytes(rng, rng.choice([0, 1, 2, 3, rng.randrange(0, 70)])))
+        if rng.random() < 0.5: src = _b64_corrupt(rng, src)
+        try:
+            want = base64.b64decode(src, validate=True)
+            if base64.b64encode(want) != src: raise ValueError
+            ret = len(want)
+        except Exception: want, ret = None, M64
+    else:
+        src = rbytes(rng, rng.randrange(0, 20)); want, ret = None, M64
+    n = len(src)
+    dst = rbytes(rng, 2 * n + 4)
+    def check(r):
+        if r["rax"] != ret:
+            return f"rax={r['rax']:#x} want {ret:#x} (op={op:#x}, n={n}, src={src[:40].hex()})"
+        if want is not None:
+            got = r["bufs"][0]
+            if got[:len(want)] != want: return f"dst wrong (op={op}, n={n}, src={src[:40].hex()})"
+            if got[len(want):] != dst[len(want):]: return f"wrote beyond the result (op={op}, n={n})"
+        return None
+    return [dst, src], [op, "p0", "p1", n], check
+
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
 def judge_a64(task, binary, cases, seed):

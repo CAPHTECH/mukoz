@@ -1,0 +1,31 @@
+schema = "mukoz.binding/1"
+id = "task.codec@aarch64-aapcs64"
+contract = "task.codec"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "input.op"
+x1 = "addr(dst)"
+x2 = "addr(src)"
+x3 = "len(ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw))))"
+
+[results]
+value = "x0"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw))))"
+init = "ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw)))"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

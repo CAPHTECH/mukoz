@@ -1,0 +1,31 @@
+schema = "mukoz.binding/1"
+id = "task.codec@x86_64-sysv"
+contract = "task.codec"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "input.op"
+rsi = "addr(dst)"
+rdx = "addr(src)"
+rcx = "len(ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw))))"
+
+[results]
+value = "rax"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw))))"
+init = "ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw)))"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

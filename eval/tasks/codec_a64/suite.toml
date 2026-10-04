@@ -1,0 +1,35 @@
+schema = "mukoz.suite/1"
+id = "task.codec_a64"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "codec"
+random_cases = 1024
+
+[generate.vars.op]
+max = "bv64(4)"
+values = ["0xffffffffffffffff", "0x100000000", "0x100000003"]
+
+[generate.vars.s8]
+pieces = ["41:100", "7f:100", "00:100", "20:100", "4142434445464748:100", "30313233343536373839:100", "7f00412020207e:100", "6162636465666768696a6b6c6d6e6f70:100", "c280:100", "dfbf:100", "c3a9:100", "e0a080:100", "efbfbf:100", "ed9fbf:100", "ee8080:100", "e38182:100", "f0908080:100", "f48fbfbf:100", "f1808080:100", "f09f9880:100", "80:1", "bf:1", "c080:1", "c1bf:1", "e09fbf:1", "eda080:1", "edbfbf:1", "f08fbfbf:1", "f4908080:1", "f5808080:1", "ff:1", "fe:1", "c2:1", "e180:1", "f09080:1"]
+
+[generate.vars.k16]
+max = "bv64(96)"
+
+[generate.vars.s16]
+len = "(input.k16 & bv64(0xfffe)) + ite(urem(input.k16, bv64(7)) == bv64(0), bv64(1), bv64(0))"
+pieces = ["4100:30", "7e00:30", "4100420043004400:30", "e900:20", "ff07:10", "0008:10", "ac20:10", "ffff:10", "ffd7:10", "00e0:10", "3dd800de:20", "00d800dc:10", "ffdbffdf:10", "00d8:1", "ffdb:1", "00dc:1", "ffdf:1", "00dc00d8:1", "00d84100:1"]
+
+[generate.vars.k64]
+max = "bv64(96)"
+
+[generate.vars.sb64]
+len = "(input.k64 & bv64(0xfffc)) + ite(urem(input.k64, bv64(9)) == bv64(0), bv64(1), bv64(0))"
+pieces = ["51554a44:30", "59574a6a:30", "41414141:10", "2f2f2f2f:10", "2b2f2b2f:10", "41503841:10", "51513d3d:8", "5155493d:8", "51523d3d:4", "51554a3d:4", "41423d3d:4", "4142433d:4", "413d3d3d:1", "3d3d3d3d:1", "41413d41:1", "3d414141:1", "41412a41:1", "80414141:1", "41410a41:1"]
+
+[generate.vars.dst]
+len = "len(ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw)))) + len(ite(input.op == bv64(0), input.s8, ite(input.op == bv64(1), input.s16, ite(input.op == bv64(3), input.sb64, input.sraw)))) + bv64(4)"
+
+[limits]
+instructions_per_case = 200000
