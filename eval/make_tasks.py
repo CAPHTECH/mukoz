@@ -420,7 +420,7 @@ def _u8():
     count = f"(count i in bv64(0)..{n}: not {cont(x)})"
     return valid, count
 _valid, _count = _u8()
-_V = ["41", "7f", "00", "20", "c280", "dfbf", "c3a9", "e0a080", "efbfbf", "ed9fbf", "ee8080", "e38182", "f0908080", "f48fbfbf", "f1808080", "f09f9880"]
+_V = ["41", "7f", "00", "20", "4142434445464748", "30313233343536373839", "7f00412020207e", "6162636465666768696a6b6c6d6e6f70", "c280", "dfbf", "c3a9", "e0a080", "efbfbf", "ed9fbf", "ee8080", "e38182", "f0908080", "f48fbfbf", "f1808080", "f09f9880"]
 _I = ["80", "bf", "c080", "c1bf", "e09fbf", "eda080", "edbfbf", "f08fbfbf", "f4908080", "f5808080", "ff", "fe", "c2", "e180", "f09080"]
 T["utf8_count"] = dict(
  spec="uint64_t utf8_count(const uint8_t *buf, uint64_t n): if buf[0..n) is well-formed UTF-8 (RFC 3629 / Unicode Table 3-7: "
@@ -456,6 +456,105 @@ access = "r"
 """,
  suite_extra="\n[generate.vars.buf]\npieces = [" + ", ".join([f'"{v}:100"' for v in _V] + [f'"{v}:1"' for v in _I]) + "]\n")
 
+# --- utf8_to_utf16: validity as in utf8_count; output position from counts of earlier leads.
+def _u16():
+    b = lambda i: f"input.src[{i}]"
+    cont = lambda x: f"(({x} & bv8(0xc0)) == bv8(0x80))"
+    ll = lambda x: (f"ite(ult({x}, bv8(0x80)), bv64(1), ite(ult({x}, bv8(0xc2)), bv64(0), ite(ult({x}, bv8(0xe0)), bv64(2), "
+                    f"ite(ult({x}, bv8(0xf0)), bv64(3), ite(ult({x}, bv8(0xf5)), bv64(4), bv64(0))))))")
+    lo2 = lambda x: f"ite({x} == bv8(0xe0), bv8(0xa0), ite({x} == bv8(0xf0), bv8(0x90), bv8(0x80)))"
+    hi2 = lambda x: f"ite({x} == bv8(0xed), bv8(0x9f), ite({x} == bv8(0xf4), bv8(0x8f), bv8(0xbf)))"
+    n = "len(input.src)"
+    x = b("i"); k = ll(x)
+    lead = (f"ite({k} == bv64(0), false, ite(ugt(i + {k}, {n}), false, ite(ult({k}, bv64(2)), true, "
+            f"ite(ult({b('i + bv64(1)')}, {lo2(x)}), false, ite(ugt({b('i + bv64(1)')}, {hi2(x)}), false, "
+            f"ite(ult({k}, bv64(3)), true, ite(not {cont(b('i + bv64(2)'))}, false, "
+            f"ite(ult({k}, bv64(4)), true, {cont(b('i + bv64(3)'))}))))))))")
+    def back(d, rest):
+        y = b(f"i - bv64({d})")
+        return f"ite(ult(i, bv64({d})), false, ite(not {cont(y)}, ugt({ll(y)}, bv64({d})), {rest}))"
+    valid = f"(forall i in bv64(0)..{n}: ite({cont(x)}, {back(1, back(2, back(3, 'false')))}, {lead}))"
+    units = f"((count i in bv64(0)..{n}: not {cont(x)}) + (count i in bv64(0)..{n}: uge({x}, bv8(0xf0))))"
+    z = lambda e: f"zext({e}, 32)"
+    c6 = lambda e, sh: f"shl({z(e)} & bv32(0x3f), bv32({sh}))" if sh else f"({z(e)} & bv32(0x3f))"
+    b1, b2, b3 = b("i + bv64(1)"), b("i + bv64(2)"), b("i + bv64(3)")
+    cp = (f"ite(ult({x}, bv8(0x80)), {z(x)}, ite(ult({x}, bv8(0xe0)), shl({z(x)} & bv32(0x1f), bv32(6)) | {c6(b1, 0)}, "
+          f"ite(ult({x}, bv8(0xf0)), shl({z(x)} & bv32(0x0f), bv32(12)) | {c6(b1, 6)} | {c6(b2, 0)}, "
+          f"shl({z(x)} & bv32(0x07), bv32(18)) | {c6(b1, 12)} | {c6(b2, 6)} | {c6(b3, 0)})))")
+    pos = f"((count j in bv64(0)..i: not {cont(b('j'))}) + (count j in bv64(0)..i: uge({b('j')}, bv8(0xf0))))"
+    p = f"({pos} + {pos})"
+    def unit_at(off, u):
+        return f"(after.dst[{p} + bv64({off})] == extract({u}, 7, 0) and after.dst[{p} + bv64({off + 1})] == extract({u}, 15, 8))"
+    s4 = f"({cp} - bv32(0x10000))"
+    hi = f"(bv32(0xd800) + lshr({s4}, bv32(10)))"
+    lo = f"(bv32(0xdc00) + ({s4} & bv32(0x3ff)))"
+    unit_ok = f"ite(ult({x}, bv8(0xf0)), {unit_at(0, cp)}, {unit_at(0, hi)} and {unit_at(2, lo)})"
+    out = f"(forall i in bv64(0)..{n}: ite({cont(x)}, true, {unit_ok}))"
+    frame = f"(forall j in {units} + {units}..len(before.dst): after.dst[j] == before.dst[j])"
+    return valid, units, out, frame
+_v16, _n16, _o16, _f16 = _u16()
+T["utf8_to_utf16"] = dict(
+ spec="uint64_t utf8_to_utf16(uint16_t *dst, const uint8_t *src, uint64_t n): if src[0..n) is well-formed UTF-8 (RFC 3629 / Unicode Table 3-7: no overlong forms, no surrogates U+D800-U+DFFF, nothing above U+10FFFF, no truncated or stray bytes), write its UTF-16LE encoding to dst (code points above U+FFFF as surrogate pairs) and return the number of 16-bit units written. Otherwise return 0xffffffffffffffff (dst contents are then unspecified). dst has room for n units (2n bytes) and src points to exactly n readable bytes (n may be 0). Only dst[0..n) may be written, and for valid input nothing beyond the returned number of units may be modified.",
+ modifies='modifies = ["dst"]',
+ contract=f"""
+[inputs]
+src = {{ type = "bytes", max_len = 128 }}
+
+[state]
+dst = {{ type = "bytes", max_len = 256 }}
+
+[results]
+value = "bv64"
+
+[[requires]]
+id = "dst_room"
+expr = "len(before.dst) == len(input.src) + len(input.src)"
+
+[[ensures]]
+id = "count"
+expr = "ite({_v16}, result.value == {_n16}, true)"
+
+[[ensures]]
+id = "invalid_all_ones"
+expr = "ite({_v16}, true, result.value == bv64(0xffffffffffffffff))"
+
+[[ensures]]
+id = "units"
+expr = "ite({_v16}, {_o16}, true)"
+
+[[ensures]]
+id = "rest_unchanged"
+expr = "ite({_v16}, {_f16}, true)"
+""",
+ binding="""
+[arguments]
+rdi = "addr(dst)"
+rsi = "addr(src)"
+rdx = "len(input.src)"
+
+[results]
+value = "rax"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(input.src)"
+init = "input.src"
+access = "r"
+""",
+ suite_extra="\n[generate.vars.src]\npieces = [" + ", ".join([f'"{v}:100"' for v in _V] + [f'"{v}:1"' for v in _I]) + "]\n\n[generate.vars.dst]\nlen = \"len(input.src) + len(input.src)\"\n")
+
+T["utf8_to_utf16_fast"] = dict(T["utf8_to_utf16"])
+T["utf8_to_utf16_fast"]["spec"] = T["utf8_to_utf16"]["spec"].replace("uint64_t utf8_to_utf16(", "uint64_t utf8_to_utf16_fast(") + (
+    " Performance requirement: whenever at least 8 input bytes remain and the next 8 bytes are all ASCII (< 0x80), they must be "
+    "handled together: one 64-bit load, an all-ASCII test on the whole word, and the 8 resulting units written with 64-bit (or wider) "
+    "stores. Byte-at-a-time handling is only allowed for non-ASCII sequences and when fewer than 8 bytes remain or the next 8 are not all ASCII. "
+    "Unaligned loads and stores are allowed.")
+
 for name, t in T.items():
     d = os.path.join("tasks", name)
     os.makedirs(d, exist_ok=True)
@@ -480,7 +579,7 @@ A64_ABI = ("Target CPU: AArch64 (ARMv8-A, little-endian). Calling convention: AA
            "Use only base integer A64 instructions (no SIMD/FP). The routine must not make system calls and must only touch the memory "
            "described below (plus its own stack below the incoming sp).")
 A64_REG = {"rdi": "x0", "rsi": "x1", "rdx": "x2", "rcx": "x3", "r8": "x4", "r9": "x5", "rax": "x0"}
-A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64", "count_byte_fast", "utf8_count"]
+A64_TASKS = ["count_byte", "memmove", "isqrt", "hex_encode", "base64", "count_byte_fast", "utf8_count", "utf8_to_utf16", "utf8_to_utf16_fast"]
 for name in A64_TASKS:
     t = T[name]
     d = os.path.join("tasks", name + "_a64")

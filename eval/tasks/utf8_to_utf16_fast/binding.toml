@@ -1,0 +1,30 @@
+schema = "mukoz.binding/1"
+id = "task.utf8_to_utf16_fast@x86_64-sysv"
+contract = "task.utf8_to_utf16_fast"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "addr(dst)"
+rsi = "addr(src)"
+rdx = "len(input.src)"
+
+[results]
+value = "rax"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(input.src)"
+init = "input.src"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

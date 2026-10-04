@@ -155,6 +155,9 @@ def _utf8_valid_string(rng, n_cp):
     edges = [0, 0x7f, 0x80, 0x7ff, 0x800, 0xfff, 0x1000, 0xd7ff, 0xe000, 0xfffd, 0xffff, 0x10000, 0x3ffff, 0x40000, 0x10ffff]
     out = []
     for _ in range(n_cp):
+        if rng.random() < 0.12:
+            out.extend(chr(rng.randrange(0, 0x80)) for _ in range(rng.randrange(1, 24)))
+            continue
         r = rng.random()
         if r < 0.3: cp = rng.choice(edges)
         elif r < 0.55: cp = rng.randrange(0, 0x80)
@@ -196,6 +199,33 @@ def t_utf8_count(rng):
         want = M64
     n = len(buf)
     return [buf], ["p0", n], lambda r: None if r["rax"] == want else f"rax={r['rax']:#x} want {want:#x} (n={n}, buf={buf.hex()[:80]})"
+
+def t_utf8_to_utf16(rng):
+    n_cp = rng.choice([0, 1, 2, 3, rng.randrange(0, 30), rng.randrange(0, 60)])
+    src = _utf8_valid_string(rng, n_cp)
+    if rng.random() < 0.4:
+        src = _utf8_corrupt(rng, src)
+    n = len(src)
+    dst = rbytes(rng, 2 * n)
+    try:
+        out = src.decode("utf-8").encode("utf-16-le")
+        want = len(out) // 2
+    except UnicodeDecodeError:
+        out, want = None, M64
+    def check(r):
+        if r["rax"] != want:
+            return f"rax={r['rax']:#x} want {want:#x} (n={n}, src={src.hex()[:60]})"
+        if out is not None:
+            got = r["bufs"][0]
+            if got[:len(out)] != out:
+                return f"dst wrong (n={n}, src={src.hex()[:60]})"
+            if got[len(out):] != dst[len(out):]:
+                return f"wrote beyond the returned units (n={n})"
+        return None
+    return [dst, src], ["p0", "p1", n], check
+
+def t_utf8_to_utf16_fast(rng):
+    return t_utf8_to_utf16(rng)
 
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 

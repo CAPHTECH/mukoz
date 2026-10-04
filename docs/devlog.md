@@ -35,3 +35,5 @@
 | 2026-10-04 | 4 | 新しい診断で再確認(RHA): PASS。対照の REJECT で why_false が正しい箇所(奇数組・ビット1)を指したと報告。docs/12 に出力の形と終了コードを追記(--gate の値は実装で確認して記載) |
 | 2026-10-04 | E1 | 次の目標: 一度では正しく書けない規模で Mukoz が到達率を上げるか。課題 utf8_count(x86・aarch64)を追加: 契約は forall による位置ごとの条件(fold 不要)。生成器に重み付き断片 `pieces` を追加。gcc 参照 ACCEPT/PASS、変異4種(overlong・サロゲート・U+10FFFF超・途中切れ)は Mukoz REJECT/隠し判定 FAIL で一致(各1回)。生成ケースの妥当 UTF-8 は 246/1028 |
 | 2026-10-04 | E1 | utf8_count の aarch64 参照(手書き符号化)と変異4種: Mukoz と a64.py が全一致(各1回) |
+| 2026-10-04 | 4 | 較正(実行なしの一発書き、各1回): utf8_count x86 2/2・a64 2/2 PASS → 易しすぎ。utf8_to_utf16 x86 2/2 PASS・a64 1/2 PASS(不合格の1件は Mukoz も REJECT で一致) |
+| 2026-10-04 | E1 | utf8_to_utf16 / utf8_to_utf16_fast(8バイト ASCII 一括処理を要件化)の契約・gcc 参照・変異を追加。生成器に ASCII の連続断片、隠し判定に ASCII 連続を追加。注意: zsh で引用なし $2 は分割されず、変異用フラグが効かない版を一度作った(cmp で検出、作り直して両判定器 REJECT を確認) |

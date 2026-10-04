@@ -1,14 +1,17 @@
 schema = "mukoz.suite/1"
-id = "task.utf8_count_a64"
+id = "task.utf8_to_utf16_fast_a64"
 contract = "contract.toml"
 binding = "binding.toml"
 
 [generate]
-seed = "utf8_count"
+seed = "utf8_to_utf16_fast"
 random_cases = 1024
 
-[generate.vars.buf]
+[generate.vars.src]
 pieces = ["41:100", "7f:100", "00:100", "20:100", "4142434445464748:100", "30313233343536373839:100", "7f00412020207e:100", "6162636465666768696a6b6c6d6e6f70:100", "c280:100", "dfbf:100", "c3a9:100", "e0a080:100", "efbfbf:100", "ed9fbf:100", "ee8080:100", "e38182:100", "f0908080:100", "f48fbfbf:100", "f1808080:100", "f09f9880:100", "80:1", "bf:1", "c080:1", "c1bf:1", "e09fbf:1", "eda080:1", "edbfbf:1", "f08fbfbf:1", "f4908080:1", "f5808080:1", "ff:1", "fe:1", "c2:1", "e180:1", "f09080:1"]
+
+[generate.vars.dst]
+len = "len(input.src) + len(input.src)"
 
 [limits]
 instructions_per_case = 200000
