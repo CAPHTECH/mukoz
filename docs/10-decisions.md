@@ -1,89 +1,89 @@
-# 10 設計判断・未決事項・参考資料
+# 10 Design decisions, open issues and references
 
-## 10.1 設計判断
+## 10.1 Design decisions
 
-| ID | 判断 | 理由 | 0.4との関係 |
+| ID | Decision | Reason | Relation to 0.4 |
 |---|---|---|---|
-| ADR-01 | 正解は Contract から決める | 生成者の説明や対象の出力から期待値を逆算すると、誤りが共通化する | 継承(D01) |
-| ADR-02 | Contract(ISA非依存)と Binding(プラットフォーム依存)を分ける | 同じ契約を複数ISA・複数ホストで使い回せる | 継承(D02)。複数ISAの根拠として重要度を上げた |
-| ADR-03 | プラットフォームを ISA・形式・ABI・OS・Executor・Host の独立した軸で表す。profile名は表示用 | ARM Mac以外のホスト・対象を両方サポートする要件 | 変更(0.4のD08「初期はAArch64とMach-Oに限定」を置き換え) |
-| ADR-04 | 同一性を subject context と execution platform に分ける。後者はclaimの範囲 | ホストを照合キーにすると別ホストの結果がすべて無効になり、入れないとホスト差が残らない | 変更 |
-| ADR-05 | Executor の間で自動fallbackしない。能力はホストで確認した値だけを使う | 宣言値・fallbackは保証範囲を黙って変える | 継承(D09)を一般化 |
-| ADR-06 | 最初の動作環境は Linux x86-64 | 現在の開発環境。ここで検証できない設計は進められない | 変更(0.4は Apple Silicon 実機を前提にしていた) |
-| ADR-07 | 実装言語は Rust | 信頼できない入力を解析するためのメモリ安全性。`no_std`・`extern "C"` でランタイムに依存しない関数を作れ、自己検査の対象にできる。複数OS・複数ISAへのビルド | 継承。理由を追加 |
-| ADR-08 | 人が書く形式は TOML、正本は JSON。式は文字列で書き、型付きASTに変換して保存 | YAMLの alias・tag・暗黙の型変換への対策が要らない。式を短く書ける | 変更(0.4はYAML+JSON AST) |
-| ADR-09 | 式に可変長 bytes と有界量化子を入れる | バッファを扱うルーチンの契約を書けるようにする | 追加 |
-| ADR-10 | プロセス境界の契約(stdout・stderr・exit)を入れる | helloのような実行ファイルの期待を契約で書けるようにする | 追加 |
-| ADR-11 | 作用モデルを「作用の意味」と「OS×ISAの syscall adapter」に分ける | Linux・Darwinで意味を共有し、Windowsは別の adapter(API stub)で足せる | 変更 |
-| ADR-12 | 同ISAホストでの native-routine を加える | 実CPUという独立した期待値の出どころを安く得られる | 追加 |
-| ADR-13 | MVPのインターフェースは JSON出力のCLIのみ。JSON-RPC・MCP・receipt・HMAC は後段 | テストを走らせる前に周辺機構を作らない | 変更(0.4は JSON-RPC と12操作を継承) |
-| ADR-14 | 自己検査を行い、claim に判定器の独立性を記録する。`self` だけでは既定で HOLD | 同じ誤りを持つ判定器はその誤りを見逃す | 追加 |
-| ADR-15 | `release_authorized` は常に false | テストの合否とリリースの許可は別の判断 | 継承(D10) |
-| ADR-16 | FSL連携と形式検証(有界検証・refinement)を本書群の範囲から外す。データモデルに `method` と評価値の予約だけ残す | 指示による。まず有限テストを確実にする | 変更 |
-| ADR-17 | 検査する成果物は Suite の `[artifact]` か CLI の `--artifact` で指定し、Binding には書かない。raw の code 領域の既定はファイル全体 | AIが生成のたびにファイルや命令長を変えても、契約・Bindingを書き直さずに繰り返せるようにする | 変更(0.4は Binding の `target_id`) |
-| ADR-18 | 反例を契約digest・ターゲットに結び付けた回帰ケースとしてため、次の検査で先に実行する。自動では消さない | 生成の繰り返しで再発を毎回確かめるため | 追加 |
-| ADR-19 | finding に診断情報(失敗地点、直近の実行命令、違反アクセス、部分式の値)を付ける。判定には使わない | AIが機械語を直すための手がかり。診断と判定を混ぜない | 追加 |
-| ADR-20 | `--fail-fast` で最初の反例後に打ち切れる。REJECT は有効、ACCEPT にはならない | 繰り返しの速度 | 追加 |
-| ADR-21 | native実行は、digest指定の許可に加え、所有者が設定した試行区域で、要求する隔離能力がすべて確認できた場合に許す。既定は無効 | 生成のたびの人の許可で繰り返しが止まらないようにする。安全性との取引なので所有者が選ぶ | 追加 |
-| ADR-22 | 開発の目的を「AIエージェントがソースなしで契約を満たすバイナリを生成・修正できること」とし、最初の探索目標をその価値の仮説の比較試験にする。Tier 1 は段階目標 | ツールの完成度ではなく価値で成否を測るため。最終判定は Mukoz にさせない | 追加(11章) |
-| ADR-23 | 主用途は (i) AIによる機械語の直接生成。(ii) 配布物の検査は、同じOSのnative-processで済む範囲に限り、専用の投資をしない | Mukoz独自の価値はルーチン単位の検査・監視・反例にある。(ii)の中心は通常のCIでも大部分を賄える | 追加。比較試験の後に再判定 |
+| ADR-01 | The correct answer is determined from the Contract | If expected values are derived backward from the generator's explanation or the subject's output, errors become shared | Inherited (D01) |
+| ADR-02 | Separate the Contract (ISA-independent) from the Binding (platform-dependent) | The same contract can be reused across multiple ISAs and multiple hosts | Inherited (D02). Raised in importance as the basis for multiple ISAs |
+| ADR-03 | Represent the platform with independent axes: ISA, format, ABI, OS, Executor and Host. Profile names are for display | Requirement to support hosts and targets other than ARM Mac, both | Changed (replaces 0.4's D08 "initially limited to AArch64 and Mach-O") |
+| ADR-04 | Split identity into subject context and execution platform. The latter is the scope of a claim | If the host is used as a matching key, all results from other hosts become invalid; if it is left out, host differences are not retained | Changed |
+| ADR-05 | No automatic fallback between Executors. Use only capabilities confirmed on the host | Declared values and fallback silently change the scope | Inherited (D09), generalized |
+| ADR-06 | The first operating environment is Linux x86-64 | It is the current development environment. A design that cannot be verified here cannot move forward | Changed (0.4 assumed a real Apple Silicon machine) |
+| ADR-07 | Implementation language is Rust | Memory safety for parsing untrusted input. `no_std` and `extern "C"` allow building runtime-independent functions, which can be made subjects of self-check. Builds for multiple OSes and ISAs | Inherited. Reason added |
+| ADR-08 | The human-written format is TOML and the source of truth is JSON. Expressions are written as strings and stored after conversion to a typed AST | No need for countermeasures against YAML aliases, tags and implicit type conversion. Expressions can be written short | Changed (0.4 used YAML + JSON AST) |
+| ADR-09 | Add variable-length bytes and bounded quantifiers to expressions | To make it possible to write contracts for routines that handle buffers | Added |
+| ADR-10 | Add process-boundary contracts (stdout, stderr, exit) | To make it possible to write, as a contract, the expectations for an executable such as hello | Added |
+| ADR-11 | Split the effect model into "the meaning of effects" and "OS×ISA syscall adapters" | Linux and Darwin share the meaning, and Windows can be added with a separate adapter (API stub) | Changed |
+| ADR-12 | Add native-routine on a same-ISA host | A cheap way to get a real CPU as an independent source of expected values | Added |
+| ADR-13 | The MVP interface is a CLI with JSON output only. JSON-RPC, MCP, receipt and HMAC come later | Do not build peripheral machinery before running tests | Changed (0.4 inherited JSON-RPC and 12 operations) |
+| ADR-14 | Perform self-check and record checker independence in the claim. `self` alone gives HOLD by default | A checker with the same error will miss that error | Added |
+| ADR-15 | `release_authorized` is always false | A test pass/fail and permission to release are separate judgements | Inherited (D10) |
+| ADR-16 | Take FSL integration and formal verification (bounded verification, refinement) out of the scope of this document set. Leave only reserved `method` and evaluation values in the data model | By instruction. First make finite testing reliable | Changed |
+| ADR-17 | The artifact to check is specified by the Suite's `[artifact]` or the CLI's `--artifact`, and is not written in the Binding. The default for a raw code region is the whole file | So that repetition is possible without rewriting the contract or Binding, even when the AI changes the file or instruction length on each generation | Changed (0.4 used the Binding's `target_id`) |
+| ADR-18 | Accumulate counterexamples as regression cases tied to the contract digest and target, and run them first in the next check. They are not deleted automatically | To confirm recurrence on every iteration of generation | Added |
+| ADR-19 | Attach diagnostics (failure point, recently executed instructions, violating access, subexpression values) to findings. They are not used for the verdict | Clues for the AI to fix machine code. Do not mix diagnosis with verdict | Added |
+| ADR-20 | `--fail-fast` can stop after the first counterexample. REJECT is valid and ACCEPT is not possible | Speed of iteration | Added |
+| ADR-21 | Native execution is allowed, in addition to permission by digest, in a trial zone set by the owner where all required isolation capabilities can be confirmed. Disabled by default | So that iteration does not stall on a human's permission for every generation. It is a trade-off with safety, so the owner chooses | Added |
+| ADR-22 | The purpose of development is "AI agents can generate and fix binaries that satisfy a contract, without source", and the first exploration goal is a comparison trial of hypotheses about that value. Tier 1 is a stage goal | To measure success by value, not by the completeness of the tool. The final verdict is not left to Mukoz | Added |
+| ADR-23 | The main use is (i) direct generation of machine code by AI. (ii) Checking distributed artifacts is limited to what can be done with native-process on the same OS, with no dedicated investment | Mukoz's own value lies in routine-level checking, monitoring and counterexamples. Most of (ii) can be covered by ordinary CI | Added. To be re-decided after the comparison trial |
 
-## 10.2 未決事項
+## 10.2 Open issues
 
-| 論点 | 現在の案 | 決めるのに必要なもの |
+| Issue | Current proposal | What is needed to decide |
 |---|---|---|
-| Unicorn のビルドと動作 | 第一候補 | P1-0 の spike。失敗した場合の代替: 自前の小さな命令インタープリタ(対応命令を絞る)、または別のエミュレータ |
-| Mukoz のライセンス | 未定 | Unicorn は上流が GPLv2 を掲げている(0.4の確認。本書作成時は未再確認 `[U]`)。worker を別プロセスにしてもライセンス上の問題が解消するとは限らない。配布形態とあわせて決める |
-| 次に Tier 1 にするホスト | macOS arm64 → Linux arm64 → Windows x86_64 | 利用者・CI環境の有無 |
-| aarch64 fixture の作り方 | `binutils-aarch64-linux-gnu` か Rust の aarch64 ターゲット | パッケージ導入の可否 |
-| Mach-O hello fixture | 0.4 の `hello-arm64` を取り寄せる、または手で組み立てる | ファイルの所在(このディレクトリにはない) |
-| cgroup の委譲 | 使えれば子孫停止・メモリ制限に使う | 現ホストでの確認 `[U]` |
-| Windows の作用モデル | API(kernel32 / ntdll)単位の stub | 契約付き stub の設計、Windowsホスト |
-| ABI表・syscall番号の一次資料での照合 | 05章の表は未照合 `[U]` | 実装時に各資料を開いて版を固定 |
-| 旧Mukoz v0.3 との互換 | 互換を前提にしない | 旧実装・schemaの所在 |
-| JSON-RPC / MCP | 後段 | CLIの操作が固まった後 |
-| 契約からのスタブ生成(モジュール分割) | 未実装。呼び先を実装せずに呼び元だけを検査するには、正しいと分かっている別実装を `--module` で差し込む(13章) | 契約の ensures から呼出し応答を作る方法(関数的な契約なら式の評価で足りる。関係しか書かない契約では解を探す必要がある) |
-| 呼び先による呼び元メモリの書換え | 未検出。境界監視は呼び先の契約の値・ABI だけを見て、プロセス全体のメモリ監視は「許可された領域か」だけを見る | 呼出し中だけ許可範囲を呼び先の契約の領域に絞る監視 |
-| ELF のモジュール分割・動的リンク | 範囲外(静的 ET_EXEC のみ) | 再配置・シンボル解決を Mukoz が担うかどうか |
-| 契約・Suite の改変防止 | **当面は設けない**(2026-10-04 指示)。AIが ensures を緩めたり Suite のケースを減らしたりすると、ACCEPT になり得る。現状は、証跡に契約・Suite の digest が残るので後から気付ける、という程度 | 必要になったら: 所有者が承認した Contract・Suite の digest を policy に固定し、違えば HOLD にする(0.4の承認済み契約に相当) |
+| Unicorn build and operation | First candidate | The P1-0 spike. Alternatives if it fails: a small instruction interpreter of our own (limited set of supported instructions), or a different emulator |
+| Mukoz license | Undecided | Upstream Unicorn lists GPLv2 (confirmed in 0.4; not re-confirmed when this document was written `[U]`). Making the worker a separate process does not necessarily resolve the license issue. Decide together with the distribution form |
+| Next host to make Tier 1 | macOS arm64 → Linux arm64 → Windows x86_64 | Whether users and CI environments exist |
+| How to build aarch64 fixtures | `binutils-aarch64-linux-gnu` or the Rust aarch64 target | Whether packages can be installed |
+| Mach-O hello fixture | Obtain 0.4's `hello-arm64`, or assemble it by hand | Where the file is (it is not in this directory) |
+| Delegation of cgroups | If usable, use for stopping descendants and memory limits | Confirmation on the current host `[U]` |
+| Windows effect model | Stubs per API (kernel32 / ntdll) | Design of contract-bearing stubs, a Windows host |
+| Checking the ABI tables and syscall numbers against primary sources | The tables in chapter 05 are not yet checked `[U]` | At implementation time, open each source and pin the version |
+| Compatibility with old Mukoz v0.3 | Compatibility is not assumed | Where the old implementation and schema are |
+| JSON-RPC / MCP | Later | After the CLI operations are settled |
+| Stub generation from contracts (module splitting) | Not implemented. To check only a caller without implementing the callee, plug in a separate implementation known to be correct with `--module` (chapter 12) | A way to build call responses from the contract's ensures (for a functional contract, expression evaluation is enough; for a contract that states only relations, a search for solutions is needed) |
+| Callee overwriting caller memory | Not detected. Boundary monitoring looks only at the callee contract's values and the ABI, and whole-process memory monitoring looks only at "is it an allowed region" | A monitor that narrows the allowed range, only during the call, to the regions of the callee's contract |
+| ELF module splitting and dynamic linking | Out of scope (static ET_EXEC only) | Whether Mukoz takes on relocation and symbol resolution |
+| Preventing tampering with contracts and Suites | **Not provided for now** (instruction of 2026-10-04). If the AI loosens an ensures or reduces the cases in a Suite, the result can be ACCEPT. At present, the only safeguard is that the contract and Suite digests remain in the evidence, so it can be noticed afterwards | When it becomes necessary: pin in the policy the digests of Contracts and Suites approved by the owner, and make a mismatch HOLD (equivalent to 0.4's approved contract) |
 
-これらは P0(型・式・判定・Store)の着手を止めない。
+These do not block starting P0 (types, expressions, verdicts, Store).
 
-## 10.3 採用しない近道
+## 10.3 Shortcuts not taken
 
-- 生成者と同じロジックで期待値を作る
-- 逆アセンブルできたことを成功とする
-- 未対応のsyscallに成功応答を返す、未対応命令をNOPにする
-- 最初の `ret` で終了する
-- 初期レジスタをすべて0にして、それをABIの保証とみなす
-- native実行で観測していない作用を「なかった」とする
-- 時間切れを成功とする
-- エミュレーションで動かないものを黙ってnative実行する
-- 署名前後を同一視する、`.text` の一致だけで証跡を再利用する
-- 別ホストで得た結果を、ホストを記録せずにまとめる
-- 自己検査の結果を独立した検査と同列に扱う
-- テストの報告を証明書と呼ぶ
+- Building expected values with the same logic as the generator
+- Treating successful disassembly as success
+- Returning a success response to an unsupported syscall, or treating an unsupported instruction as a NOP
+- Ending at the first `ret`
+- Setting all initial registers to 0 and regarding that as an ABI guarantee
+- Treating effects not observed in native execution as "did not happen"
+- Treating a timeout as success
+- Silently running natively what does not run under emulation
+- Equating before and after signing, or reusing evidence based only on a match of `.text`
+- Aggregating results obtained on different hosts without recording the hosts
+- Treating the result of self-check on a par with an independent check
+- Calling a test report a certificate
 
-## 10.4 参考資料
+## 10.4 References
 
-本書作成時(2026-10-04)に**開いて再確認していない**。0.4 が参照した資料と、本書で新たに挙げた資料の一覧であり、実装時に版を固定して確認する。
+**Not opened and re-confirmed** when this document was written (2026-10-04). This is a list of the sources 0.4 referenced and sources newly listed in this document. Pin the versions and confirm at implementation time.
 
-| ID | 資料 | 用途 |
+| ID | Source | Use |
 |---|---|---|
 | R1 | Apple, *Writing ARM64 code for Apple platforms* — <https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms> | `apple-arm64` ABI |
 | R2 | Arm, *Procedure Call Standard for the Arm 64-bit Architecture (AAPCS64)* — <https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst> | `aapcs64` ABI |
 | R3 | *System V Application Binary Interface, AMD64 Architecture Processor Supplement* | `sysv-x86_64` ABI |
-| R4 | Microsoft, *x64 calling convention* / *ARM64 ABI conventions*(Microsoft Learn) | `win64`、`win-arm64` ABI |
-| R5 | Unicorn — <https://github.com/unicorn-engine/unicorn> | エミュレーション、フック、ライセンス |
-| R6 | Capstone — <https://www.capstone-engine.org/> | 逆アセンブル |
-| R7 | `object` crate — <https://docs.rs/object/latest/object/> | 形式の読取り |
-| R8 | Apple XNU `EXTERNAL_HEADERS/mach-o/loader.h` — <https://github.com/apple-oss-distributions/xnu> | Mach-O 構造 |
-| R9 | Apple XNU `bsd/kern/syscalls.master` — 同上 | Darwin syscall 番号 |
-| R10 | Linux カーネル `arch/x86/entry/syscalls/syscall_64.tbl`、`include/uapi/asm-generic/unistd.h` | Linux syscall 番号 |
-| R11 | *ELF-64 Object File Format* / System V gABI | ELF 構造 |
-| R12 | Microsoft, *PE Format* | PE 構造 |
-| R13 | Apple, *TN2206: macOS Code Signing In Depth* | 署名と変更 |
+| R4 | Microsoft, *x64 calling convention* / *ARM64 ABI conventions* (Microsoft Learn) | `win64`, `win-arm64` ABI |
+| R5 | Unicorn — <https://github.com/unicorn-engine/unicorn> | Emulation, hooks, license |
+| R6 | Capstone — <https://www.capstone-engine.org/> | Disassembly |
+| R7 | `object` crate — <https://docs.rs/object/latest/object/> | Reading formats |
+| R8 | Apple XNU `EXTERNAL_HEADERS/mach-o/loader.h` — <https://github.com/apple-oss-distributions/xnu> | Mach-O structure |
+| R9 | Apple XNU `bsd/kern/syscalls.master` — same as above | Darwin syscall numbers |
+| R10 | Linux kernel `arch/x86/entry/syscalls/syscall_64.tbl`, `include/uapi/asm-generic/unistd.h` | Linux syscall numbers |
+| R11 | *ELF-64 Object File Format* / System V gABI | ELF structure |
+| R12 | Microsoft, *PE Format* | PE structure |
+| R13 | Apple, *TN2206: macOS Code Signing In Depth* | Signing and modification |
 
-前版 0.4-design-draft.1(`Mukoz_Binary_Test_Tool_Design.md`)は、本書群に内容を移したうえで削除した(2026-10-04)。FSL連携・形式検証・旧Mukoz v0.3 からの移行表は、移さずに捨てた。
+The previous version 0.4-design-draft.1 (`Mukoz_Binary_Test_Tool_Design.md`) was deleted after its content was moved into this document set (2026-10-04). The FSL integration, formal verification and the migration table from old Mukoz v0.3 were discarded without being moved.
 
-0.4 が参照していた旧Mukoz v0.3 の内部資料(このディレクトリにはない): `DESIGN(6).md`(v0.3.0 設計)、`PROTOCOL.md`(`mukoz/1` 通信仕様)、`NAMING(1).md`(名称規約)、`README(20261001-202535).md`(試作状態。旧Rust実装の build/test は未確認と記載)。
+Internal materials of old Mukoz v0.3 that 0.4 referenced (not in this directory): `DESIGN(6).md` (v0.3.0 design), `PROTOCOL.md` (`mukoz/1` communication specification), `NAMING(1).md` (naming conventions), `README(20261001-202535).md` (prototype status. States that build/test of the old Rust implementation is unverified).

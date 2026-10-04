@@ -1,39 +1,39 @@
-# 04 契約・Binding・Suite
+# 04 Contracts, Binding, Suite
 
-## 4.1 3つを別々に書く
+## 4.1 Write the three separately
 
 ```text
-Contract: aとbの64bit wrapping加算が返る。            (ISA非依存)
-Binding:  x86_64 SysV なら a=rdi, b=rsi, 結果=rax。  (プラットフォーム依存)
-Suite:    境界値の直積と seed 固定のランダム 4096 件。 (検査方法)
+Contract: returns the 64-bit wrapping sum of a and b.          (ISA-independent)
+Binding:  on x86_64 SysV, a=rdi, b=rsi, result=rax.            (platform-dependent)
+Suite:    Cartesian product of boundary values plus 4096 random cases with a fixed seed. (checking method)
 ```
 
-- Contractはレジスタ割当を知らない。同じContractに、ISAごとのBindingを複数付けられる。
-- Bindingは何が正しいかを定義しない。
-- Suiteは必須claimを削らない。
+- A Contract knows nothing about register assignment. Several Bindings, one per ISA, can be attached to the same Contract.
+- A Binding does not define what is correct.
+- A Suite does not remove required claims.
 
-## 4.2 ファイル形式
+## 4.2 File format
 
-- 人が書く形式は **TOML**。機械間の正本は **JSON**。どちらも同じ内部モデルへ変換し、正規化したJSONのdigestで識別する。
-- 未知のフィールド、重複キーを拒否する。
-- 式はTOML/JSON内の**文字列**として書き(4.3)、読込み時に型付きASTへ変換する。正規化JSONには式文字列ではなくASTを保存する。
-- 各ファイルは `schema = "mukoz.contract/1"` のように版を持つ。
+- The format humans write is **TOML**. The canonical form between machines is **JSON**. Both are converted to the same internal model and identified by the digest of the normalized JSON.
+- Unknown fields and duplicate keys are rejected.
+- Expressions are written as **strings** inside TOML/JSON (4.3) and converted to a typed AST on load. The normalized JSON stores the AST, not the expression string.
+- Each file carries a version, as in `schema = "mukoz.contract/1"`.
 
-## 4.3 式言語
+## 4.3 Expression language
 
-任意のPython・JavaScript・shellは許さない。小さな型付き式だけを解釈する。
+Arbitrary Python, JavaScript, and shell are not allowed. Only a small typed expression language is interpreted.
 
-### 型
+### Types
 
-| 型 | 意味 |
+| Type | Meaning |
 |---|---|
-| `bool` | 真偽 |
-| `bv8` `bv16` `bv32` `bv64` | 幅付きビット列。算術はその幅での剰余算 |
-| `bytes` | 可変長のバイト列。宣言時に `max_len` が必須 |
+| `bool` | Boolean |
+| `bv8` `bv16` `bv32` `bv64` | Fixed-width bit vector. Arithmetic is modular at that width |
+| `bytes` | Variable-length byte string. `max_len` is required at declaration |
 
-数学的整数・浮動小数点・128bit以上は後の版で追加する。
+Mathematical integers, floating point, and widths of 128 bits or more will be added in a later version.
 
-### 構文
+### Syntax
 
 ```text
 expr    := or_expr
@@ -54,32 +54,32 @@ path    := IDENT ("." IDENT)*
 call    := IDENT "(" (expr ("," expr)*)? ")"
 literal := "true" | "false"
         | "bv" WIDTH "(" (HEX | DEC) ")"      # bv64(0xff), bv8(10)
-        | 'b"' ... '"'                         # bytes, \n \xNN のエスケープ
+        | 'b"' ... '"'                         # bytes, with \n and \xNN escapes
         | 'hex"' HEXDIGITS '"'                 # bytes
 ```
 
-- `+ - * & | ^ ~` は同じ幅の bv 同士だけに適用する。**暗黙の幅変換をしない。**
-- 大小比較は符号の解釈を必ず名前で書く: `ult ule ugt uge slt sle sgt sge`。`<` 記号は持たない。
-- その他の関数: `ite(c, a, b)`、`zext(x, 64)`、`sext(x, 64)`、`extract(x, hi, lo)`、`shl(x, n)`、`lshr(x, n)`、`ashr(x, n)`、`len(b)`(bv64)、`slice(b, off, n)`、`concat(a, b)`。
-- `b[i]` は bytes の i 番目(bv8)。範囲外は評価エラーで、成功にも失敗にもしない(`EVALUATION_ERROR` → そのclaimは INCONCLUSIVE)。
-- `forall i in lo..hi: p` は半開区間 `[lo, hi)` の有界量化。`i` は bv64。範囲の長さは Suite の上限(既定 65,536)を超えてはならない。
-- `==` は bv・bool・bytes に使える。bytes の比較は長さと全バイトの一致。
+- `+ - * & | ^ ~` apply only to bv operands of the same width. **There is no implicit width conversion.**
+- Ordered comparisons must always name their signedness interpretation: `ult ule ugt uge slt sle sgt sge`. There is no `<` symbol.
+- Other functions: `ite(c, a, b)`, `zext(x, 64)`, `sext(x, 64)`, `extract(x, hi, lo)`, `shl(x, n)`, `lshr(x, n)`, `ashr(x, n)`, `len(b)` (bv64), `slice(b, off, n)`, `concat(a, b)`.
+- `b[i]` is the i-th element of bytes (bv8). An out-of-range index is an evaluation error and counts as neither success nor failure (`EVALUATION_ERROR` → the claim is INCONCLUSIVE).
+- `forall i in lo..hi: p` is a bounded quantification over the half-open interval `[lo, hi)`. `i` is bv64. The length of the range must not exceed the Suite limit (default 65,536).
+- `==` works on bv, bool, and bytes. Comparing bytes requires equal length and all bytes equal.
 
-### 変数の名前空間
+### Variable namespaces
 
-| 名前空間 | 意味 |
+| Namespace | Meaning |
 |---|---|
-| `input.*` | 入力。実行開始時の不変値 |
-| `before.*` | 状態の開始時の値 |
-| `after.*` | 状態の終了時の値 |
-| `result.*` | ルーチンの戻り値 |
-| `stdout` `stderr` `exit.*` | プロセス境界の観測(4.5) |
+| `input.*` | Inputs. Immutable values at the start of execution |
+| `before.*` | State values at the start |
+| `after.*` | State values at the end |
+| `result.*` | Return values of the routine |
+| `stdout` `stderr` `exit.*` | Observations at the process boundary (4.5) |
 
-式の評価で対象を再実行したり、ホストのファイル・環境変数を読んだりしない。式の深さ64、ノード数8,192を上限とする。
+Evaluating an expression does not re-run the subject and does not read host files or environment variables. The limits are depth 64 and 8,192 nodes.
 
-## 4.4 ルーチン境界の契約
+## 4.4 Contracts at the routine boundary
 
-### 例1: 64bit wrapping加算
+### Example 1: 64-bit wrapping addition
 
 ```toml
 schema = "mukoz.contract/1"
@@ -104,9 +104,9 @@ allow = []
 kind = "must_return"
 ```
 
-性質の完全なIDは `arith.add64/sum`。`requires` を省略すると「常に真」。
+The full property id is `arith.add64/sum`. Omitting `requires` means "always true".
 
-### 例2: バッファコピー(可変長)
+### Example 2: buffer copy (variable length)
 
 ```toml
 schema = "mukoz.contract/1"
@@ -135,9 +135,9 @@ allow = []
 kind = "must_return"
 ```
 
-`modifies` はトップレベルのキーなので、TOMLではどのテーブル見出しよりも前に書く。`modifies` にない状態は、終了時に開始時と等しいことを自動で claim にする(`frame`)。
+`modifies` is a top-level key, so in TOML it must come before any table heading. For state not listed in `modifies`, a claim that the state at the end equals the state at the start is generated automatically (`frame`).
 
-### 例3: 状態付きカウンタ(失敗系を明示)
+### Example 3: stateful counter (failure path stated explicitly)
 
 ```toml
 schema = "mukoz.contract/1"
@@ -169,18 +169,18 @@ allow = []
 kind = "must_return"
 ```
 
-overflow時に「状態を変えず非0を返す」ことを契約に書いている。書いていなければ、その振る舞いは検査しない(01章 1.4)。
+The contract states that on overflow the routine "leaves the state unchanged and returns nonzero". If it did not say so, that behavior would not be checked (chapter 01 §1.4).
 
-## 4.5 プロセス境界の契約
+## 4.5 Contracts at the process boundary
 
-0.4には、プログラムのstdoutや終了コードを契約に書く手段がなかった。`boundary = "process"` を加える。
+Version 0.4 had no way to write a program's stdout or exit code in a contract. `boundary = "process"` is added.
 
-| 観測 | 型 |
+| Observation | Type |
 |---|---|
-| `stdout` `stderr` | bytes(`max_len` は Suite の出力上限) |
-| `exit.exited` | bool(正常終了したか) |
-| `exit.code` | bv32(OSの終了コード。Linuxでは下位8bitのみ意味を持つ) |
-| `exit.signaled` / `exit.signal` | bool / bv32(シグナルで終わった場合) |
+| `stdout` `stderr` | bytes (`max_len` is the Suite output limit) |
+| `exit.exited` | bool (whether it exited normally) |
+| `exit.code` | bv32 (the OS exit code. On Linux only the low 8 bits are meaningful) |
+| `exit.signaled` / `exit.signal` | bool / bv32 (when it ended by a signal) |
 | `input.stdin` | bytes |
 
 ```toml
@@ -207,26 +207,26 @@ expr = "len(stderr) == bv64(0)"
 allow = ["write:1", "exit"]
 ```
 
-### 作用の語彙
+### Effect vocabulary
 
-`effects.allow` は、境界の外へ出る作用のうち許すものを列挙する。それ以外は禁止。
+`effects.allow` lists the effects that cross the boundary and are permitted. All others are forbidden.
 
-| 作用 | 意味 |
+| Effect | Meaning |
 |---|---|
-| `write:<fd>` | 指定fdへの書込み |
-| `read:<fd>` | 指定fdからの読込み |
-| `exit` | プロセスの終了 |
-| `mem:<region>` | ルーチンが指定領域(Binding)外へ作用を持つこと。通常は書かない |
+| `write:<fd>` | Write to the given fd |
+| `read:<fd>` | Read from the given fd |
+| `exit` | Process exit |
+| `mem:<region>` | The routine has an effect outside the given region (Binding). Normally not written |
 
-禁止作用は「試みたこと」自体を違反にする(06章 6.3)。作用を観測できないExecutorでは、このclaimは NOT_EVALUATED になる。
+For a forbidden effect, the attempt itself is a violation (chapter 06 §6.3). On an Executor that cannot observe effects, this claim becomes NOT_EVALUATED.
 
-### 頑健性の契約は別に書く
+### Write robustness contracts separately
 
-helloの例は「writeが必ず全量成功する環境」での smoke 契約である。短いwriteや失敗が起きる環境で「全量書くか、規定のエラーで終わる」ことは別の契約・別の環境モデルで調べる。smoke契約の成功から頑健性を主張しない。
+The hello example is a smoke contract for an environment in which write always succeeds in full. Whether the program "writes everything or ends with the specified error" in an environment where short writes or failures occur is checked with a separate contract and a separate environment model. Do not claim robustness from the success of a smoke contract.
 
 ## 4.6 Binding
 
-### ルーチン(x86_64 SysV)
+### Routine (x86_64 SysV)
 
 ```toml
 schema = "mukoz.binding/1"
@@ -252,7 +252,7 @@ bytes = 16384
 kind = "return_to_sentinel"
 ```
 
-### 同じ契約の AArch64 Binding
+### AArch64 Binding for the same contract
 
 ```toml
 schema = "mukoz.binding/1"
@@ -278,13 +278,13 @@ bytes = 16384
 kind = "return_to_sentinel"
 ```
 
-### code領域
+### Code regions
 
-- rawルーチンで `code_regions` を省略すると、**ファイル全体を1つのcode領域**とする。AIが生成のたびに命令長を変えても、Bindingを書き直さずに済む。
-- 命令とデータを同じファイルに置く場合は `[[code_regions]]`(`offset`、`size`)と `[[data_regions]]` を明示する。サイズはファイル長を超えてはならない(`BINDING_MISMATCH`)。
-- Bindingは**どのファイルを検査するかを持たない**。成果物はSuiteかCLIで指定する(4.7)。1つのBindingを、生成のたびに変わる成果物へ使い回すためである。
+- For a raw routine, omitting `code_regions` makes **the whole file one code region**. Even if the AI changes instruction lengths on each generation, the Binding does not need to be rewritten.
+- When instructions and data share a file, state `[[code_regions]]` (`offset`, `size`) and `[[data_regions]]` explicitly. The sizes must not exceed the file length (`BINDING_MISMATCH`).
+- A Binding **does not say which file to check**. The artifact is given by the Suite or the CLI (4.7). This lets one Binding be reused for artifacts that change on every generation.
 
-### 領域を使うルーチン(mem.copy、x86_64 SysV)
+### Routine that uses regions (mem.copy, x86_64 SysV)
 
 ```toml
 schema = "mukoz.binding/1"
@@ -316,25 +316,25 @@ rdx = "len(input.src)"
 kind = "return_to_sentinel"
 ```
 
-- ハーネスは各領域を別の位置に置き、間に**未割当のguard領域**を挟む。加えてbyte単位のアクセス監視で、領域外アクセスを検出する。
-- 領域の配置(alignment・相対位置)は Suite の生成対象にできる(4.7)。
-- ポインタ引数は入口時の値を固定し、後でレジスタが上書きされても再解決しない。状態の読出しは `observe_as` で領域を指す。
-- 領域はそれぞれ、mapped・初期化済み・読取り可・書込み可・終了時に不変、を別々に指定できる。既定は `access` から決める。
+- The harness places each region at a separate location and puts an **unallocated guard region** between them. It also detects out-of-region accesses with byte-level access monitoring.
+- The placement of regions (alignment and relative position) can be a generation target of the Suite (4.7).
+- Pointer arguments are fixed at their entry values and are not re-resolved if a register is later overwritten. Reading state uses `observe_as` to point at a region.
+- For each region, mapped, initialized, readable, writable, and unchanged at exit can be specified separately. The default is derived from `access`.
 
-### Bindingが自動で加える machine claim
+### Machine claims the Binding adds automatically
 
-| claim | 内容 |
+| claim | Content |
 |---|---|
-| `machine.returned` | 入口時に用意した復帰先へ、正しいSPで戻った(05章 5.3) |
-| `machine.abi.callee_saved` | ABIの保存レジスタが入口時と等しい |
-| `machine.abi.stack` | SPの復元、規定地点でのalignment |
-| `machine.abi.reserved` | 予約レジスタを使わない(例: Apple / Windows ARM64 の x18) |
-| `machine.memory.access` | すべてのアクセスが許可領域に完全に収まる |
-| `effects.no_forbidden` | 禁止作用の試行がない |
+| `machine.returned` | Returned to the return address prepared at entry, with the correct SP (chapter 05 §5.3) |
+| `machine.abi.callee_saved` | The ABI's callee-saved registers equal their entry values |
+| `machine.abi.stack` | SP is restored, and alignment holds at the specified points |
+| `machine.abi.reserved` | Reserved registers are not used (example: x18 on Apple / Windows ARM64) |
+| `machine.memory.access` | Every access falls entirely within a permitted region |
+| `effects.no_forbidden` | No attempt at a forbidden effect |
 
-ABIごとの内容は 05章 5.4 の表で決める。
+The content for each ABI is set by the table in chapter 05 §5.4.
 
-### プロセス(x86_64 Linux ELF)
+### Process (x86_64 Linux ELF)
 
 ```toml
 schema = "mukoz.binding/1"
@@ -343,7 +343,7 @@ contract = "hello.smoke"
 target = "x86_64/elf/sysv-x86_64/linux"
 
 [entry]
-kind = "format_entry"          # ELF の e_entry
+kind = "format_entry"          # ELF e_entry
 
 [process]
 argv = ["hello"]
@@ -364,11 +364,11 @@ binding = "arith.add64@x86_64-sysv"
 executors = ["emulated"]
 
 [artifact]
-path = "build/add64.bin"      # Suiteファイルからの相対パス。CLIの --artifact で上書きできる
+path = "build/add64.bin"      # Path relative to the Suite file. Can be overridden by the CLI's --artifact
 
 [generate]
 seed = "20261004"
-boundary = "product"          # 型ごとの既定境界値の直積
+boundary = "product"          # Cartesian product of the default boundary values per type
 random_cases = 4096
 
 [limits]
@@ -378,67 +378,66 @@ guest_memory_bytes = 16777216
 trace_bytes_per_case = 4194304
 ```
 
-- `[artifact]` の `path` は所在を示すだけで、同一性は読み込んだ時点のスナップショットの digest で決まる。Planはその digest に結び付き、実行の直前・直後に digest を検査する(08章 8.5)。
-- `[artifact]` も `--artifact` もない場合は `CONTRACT_GAP` ではなく使い方の誤り(終了コード2)とする。
-- bv64 の既定境界値は `0, 1, 2, 0x7fff…ffff, 0x8000…0000, 0xffff…fffe, 0xffff…ffff, 0x0101…0101` の8個。直積なら2入力で64件、ランダムと合わせて4,160件。重複を除かず、生成順をcase IDに含める。重複入力数は報告し、「4,160個の異なる入力」とは書かない。
-- 境界値は `[generate.vars.<変数名>]` で追加・制御できる(実装済みの項目は 4.10)。
-- bytes は長さ0・1・`max_len`・ランダム長を既定とする。
-- 必須claimは既定で「Contractの全ensures + frame + Bindingのmachine claim」。Suiteは追加はできるが削除はできない。削除はPolicyでのみ行い、その事実を証跡に残す。
-- **回帰ケース:** 過去の反例は回帰ケースとして自動で加わる(4.8)。`[regressions] include = false` で外せるが、外したことを証跡と出力の `limitations` に記録する。
-- `executors` に複数を書くと、同じケースを複数のExecutorで実行し、差分を比べる(06章 6.8)。
-- 上限がPolicyの上限を超える場合は計画を拒否し、黙って切り詰めない。
-- 有効なケース(事前条件を満たすもの)が0件なら HOLD(`VACUOUS_SCOPE`)。
-- 有効なケースが下限未満なら HOLD(`LOW_ADMITTED_CASES`)。下限の既定は min(100, 生成数の1/4)。事前条件がほとんどのケースを捨てるのは、生成器が契約の想定する入力を作れていない兆候であり、残りの数件での合格は範囲を過大に見せるため。意図して絞る場合は `[limits] min_admitted_cases` で下限を明示する。捨てた件数は常に `limitations` に出す。
+- `path` in `[artifact]` only shows the location. Identity is decided by the digest of the snapshot taken at load time. The Plan is bound to that digest, and the digest is checked immediately before and after execution (chapter 08 §8.5).
+- If neither `[artifact]` nor `--artifact` is given, this is a usage error (exit code 2), not `CONTRACT_GAP`.
+- The default boundary values for bv64 are eight: `0, 1, 2, 0x7fff…ffff, 0x8000…0000, 0xffff…fffe, 0xffff…ffff, 0x0101…0101`. The Cartesian product of two inputs gives 64 cases, and with the random cases 4,160. Duplicates are not removed, and the generation order is included in the case ID. The number of duplicate inputs is reported, and the result is never described as "4,160 distinct inputs".
+- Boundary values can be added or controlled with `[generate.vars.<variable name>]` (implemented items are in 4.10).
+- For bytes, the defaults are length 0, 1, `max_len`, and a random length.
+- The required claims are, by default, "all ensures of the Contract + frame + the Binding's machine claims". A Suite can add claims but cannot remove them. Removal is done only by Policy, and that fact is recorded in the evidence.
+- **Regression cases:** Past counterexamples are added automatically as regression cases (4.8). They can be excluded with `[regressions] include = false`, but the exclusion is recorded in the evidence and in the output's `limitations`.
+- If `executors` lists several, the same cases run on several Executors and the differences are compared (chapter 06 §6.8).
+- If a limit exceeds the Policy limit, the plan is rejected and the limit is not silently truncated.
+- If there are 0 valid cases (those that satisfy the precondition), the result is HOLD (`VACUOUS_SCOPE`).
+- If the valid cases are below the lower bound, the result is HOLD (`LOW_ADMITTED_CASES`). The default lower bound is min(100, 1/4 of the generated count). A precondition that discards most cases is a sign that the generator cannot produce the inputs the contract assumes, and a pass on the few remaining cases would make the scope look larger than it is. To narrow deliberately, state the lower bound explicitly with `[limits] min_admitted_cases`. The number of discarded cases is always shown in `limitations`.
 
-## 4.8 回帰ケース
+## 4.8 Regression cases
 
-AIが生成と検査を繰り返すとき、前に見つかった失敗が再発していないかを毎回確かめるため、反例を**成果物ではなく契約とターゲットに結び付けて**ためる。
+When the AI repeats generation and checking, counterexamples are accumulated **bound to the contract and the target, not to the artifact**, so that each round can confirm that a previously found failure has not recurred.
 
 ```text
 .mukoz/regressions/<contract digest>/<target platform>/<case digest>.json
 ```
 
-- 保存する内容: 意味上の入力(`input.*`・`before.*`)、環境応答のスクリプト、領域の配置、Bindingが指定しなかったレジスタの初期値、元の反例ID、縮小済みかどうか。
-- 縮小済みの反例があればそれを、なければ元の反例を入れる。両方を持つ場合は両方入れる。
-- 次の `plan` / `check` では、回帰ケースを生成ケースより**先に**並べ、case IDを `reg-` で始める。件数は生成ケースと別に報告する。
-- Bindingが変わっても、契約とターゲットが同じなら使える。ABIが同じならレジスタの初期値もそのまま使う。Bindingの変更で回帰ケースを当てはめられない場合(必要な変数がない等)は、そのケースを NOT_EVALUATED として報告し、黙って捨てない。
-- 契約の digest が変わったら、古い回帰集合は**当てはまらないもの**として件数だけ報告する。新しい契約へ自動では移さない(期待値の意味が変わり得るため)。
-- 回帰ケースは自動では消さない。上限(既定1,024件)を超えたら計画を拒否し(`REGRESSION_LIMIT_EXCEEDED`)、黙って間引かない。整理は `mukoz regressions prune` で明示的に行い、その操作を記録する。
-- 回帰ケースが通ったことは「その反例が再発していない」という意味であり、全体の正しさではない(06章 6.10)。
+- Stored content: the semantic inputs (`input.*`, `before.*`), the environment response script, the region placement, the initial register values the Binding did not specify, the original counterexample ID, and whether it has been shrunk.
+- If a shrunk counterexample exists, store it; otherwise store the original counterexample. If both exist, store both.
+- In the next `plan` / `check`, regression cases are placed **before** the generated cases, and their case IDs start with `reg-`. Their count is reported separately from the generated cases.
+- A regression case remains usable when the Binding changes, as long as the contract and the target are the same. If the ABI is the same, the initial register values are used as they are. If a Binding change means a regression case cannot be applied (for example, a needed variable is missing), that case is reported as NOT_EVALUATED and not silently dropped.
+- If the contract's digest changes, the old regression set is reported only by count, as **not applicable**. It is not migrated automatically to the new contract (the meaning of the expected values may change).
+- Regression cases are never deleted automatically. If the limit (default 1,024) is exceeded, the plan is rejected (`REGRESSION_LIMIT_EXCEEDED`) and cases are not silently thinned. Cleanup is done explicitly with `mukoz regressions prune`, and the operation is recorded.
+- A regression case passing means "that counterexample has not recurred". It does not mean overall correctness (chapter 06 §6.10).
 
-## 4.9 契約の不足と矛盾
+## 4.9 Missing and contradictory contracts
 
-| 状況 | 報告 |
+| Situation | Report |
 |---|---|
-| 必要な情報がない(型、完了条件等) | `CONTRACT_GAP` |
-| 型が合わない | `CONTRACT_TYPE_ERROR` |
-| 生成器が事前条件を満たすケースを作れない | `VACUOUS_SCOPE`(論理的矛盾とは断定しない) |
-| Binding と Contract の変数が対応しない | `BINDING_MISMATCH` |
+| Required information is missing (type, completion condition, etc.) | `CONTRACT_GAP` |
+| Types do not match | `CONTRACT_TYPE_ERROR` |
+| The generator cannot produce cases that satisfy the precondition | `VACUOUS_SCOPE` (not asserted to be a logical contradiction) |
+| The variables of the Binding and the Contract do not correspond | `BINDING_MISMATCH` |
 
-## 4.10 実装状況(mukoz 0.1、プロセス境界とモジュール分割は 0.2 で 13章)
+## 4.10 Implementation status (Mukoz 0.1.0; the process boundary and module splitting are in chapter 12)
 
-**プロセス境界(`boundary = "process"`)・ファイル・リンクファイル・境界監視は 13章に実装の形を書いた。**
+**The implemented form of the process boundary (`boundary = "process"`), files, link files, and boundary monitoring is written in chapter 12.**
 
-この章は設計であり、実装はその部分集合である。**食い違うときは実装(ツールのエラーメッセージ)が正しい。**契約を書くエージェントのために、実装済みの範囲をここに固定する。
+This chapter is the design, and the implementation is a subset of it. **When they differ, the implementation (the tool's error messages) is correct.** For agents that write contracts, the implemented scope is fixed here.
 
-| 項目 | 0.1 の実装 |
+| Item | Implementation in 0.1.0 |
 |---|---|
-| Suite の `contract` / `binding` | **ファイルパス**(Suite からの相対)。ID 参照は未実装 |
-| `executors` | `["emulated"]`(既定)・`["native-routine"]`・`["native-process"]`・`["emulated", "native-routine"]`・`["emulated", "native-process"]`(差分試験、claim `differential.emulated_vs_<native>`)。native は Policy の許可がなければ NOT_EVALUATED(`NATIVE_NOT_PERMITTED`)で HOLD。Executor 間で自動の代替はしない |
-| `[entry] kind` | `raw_offset`・`elf_entry`(ELF 実行ファイル)・`macho_entry`(Mach-O、13章)・`symbol`(リンクファイル)・`object_symbol`(ELF 再配置可能オブジェクト ET_REL の関数記号をルーチンとして。`symbol = "名前"`。target は `<isa>/elf/<abi>/none`。関数の中に再配置があれば `UNRESOLVED_DEPENDENCY`: Mukoz はリンクしない) |
-| `[selfcheck] checkers` | 対象が Mukoz 自身のとき、前の版の判定器を列挙したファイル(06章 6.9)。指定すると `assessment.independence` が `self` / `previous_version` になる。指定しなければ `independent` |
-| 回帰ケース | ID は `reg-<保存digest>` で実行をまたいで同じ。保存した filler seed をそのまま使う(元の反例と同じ実行) |
-| `[generate]` | `seed`・`boundary`(`product` / `none`)・`random_cases` |
-| `[generate.vars.<名前>]` | `values`: 追加の値(bv は 10進/0x16進の文字列、bytes は16進文字列。`hex"..."` 形式ではない)。`len`: bytes の長さの式(前の変数を参照可。例 `len(input.src) + len(input.src)`)。`max`: bv の上限の式(含む。前の変数を参照可)。`bytes`: bytes の値域 `nonzero` / `ascii`。`pieces`: bytes を重み付きの16進断片(`"c280:20"`)の連結で作る。`expr`: 値を前の変数の式で直接与える(派生入力。例: 整形済みのファイル内容を単純な変数から組み立てる。ほかの項目とは併用不可、`max_len` を超えたら `PLAN_ERROR`)。型に合わない項目はエラー |
-| 境界値 | bv は `max` があれば {0, 1, max/2, max−1, max}、なければ 4.7 の既定。bytes は `len` があればその長さ1つ、なければ {0, 1, max_len/2, max_len}。これに `values` を足す。直積が `max_cases/2` を超えたら「1変数ずつ境界値・他はランダム」に切り替え、`plan_stats.boundary_mode = "one_at_a_time"` と `limitations` に出す |
-| 生成された入力の確認 | `data.assessment.scope.input_summary` に変数ごとの範囲(bv: min・max・異なる値の数・0 と全1の件数、bytes: 長さの min・max・異なる長さの数・空の件数、bool: 件数)を出す |
-| 停止しない | `must_return` で命令数の上限に達したら HOLD(`BUDGET_EXHAUSTED`)。停止しないことは有限の実行では示せないため REJECT にしない(I1) |
-| 依存する生成 | `len` / `max` が参照する変数を先に生成する(循環はエラー)。`len` が契約の `max_len` を超えたら `PLAN_ERROR`(切り詰めない) |
-| `[limits]` | `instructions_per_case`・`wall_ms_per_case`・`max_cases`(上限 8192)・`min_admitted_cases`。`guest_memory_bytes` / `trace_bytes_per_case` は未実装 |
-| 領域の配置の生成 | `[generate] placement = "varied"`(既定): 各領域の開始 alignment を case ごとに 0〜15 バイトずらす(case の seed から導くので、再実行・回帰でも同じ配置になる)。`"aligned"` で 16 バイト境界に固定。領域どうしの相対位置・上位番地への配置は未実装 |
-| machine claim | `machine.returned`(SP の復元を含む)・`machine.abi.callee_saved`・`machine.abi.flags`(x86 の DF)・`machine.abi.reserved`(apple-arm64 の x18 のみ)・`machine.memory.access`・`effects.no_forbidden`。`machine.abi.stack` は独立の claim ではなく `machine.returned` に含む |
-| 式 | 4.4 の型付き式。整数リテラルは `bvN(...)` で幅を明示する(契約内の裸の整数は `CONTRACT_TYPE_ERROR`)。`mukoz expr check` は構文だけを検査し、型は契約の読込み時に検査する |
-| `forall` / `count` / `join` の範囲 | 1式あたり 65,536 まで。`join i in a..b: <bytes>` は本体の連結(結果は 1 MiB まで) |
-| 追加の関数 | `dec(bv)`: 符号なし10進の文字列(bytes)。`u16le` / `u32le` / `u64le(bytes, off)`: リトルエンディアンの読み出し(範囲外は評価エラー → INCONCLUSIVE) |
-| プロセス Binding・環境モデル | 13章 |
-
+| Suite `contract` / `binding` | **File paths** (relative to the Suite). Referencing by ID is not implemented |
+| `executors` | `["emulated"]` (default), `["native-routine"]`, `["native-process"]`, `["emulated", "native-routine"]`, `["emulated", "native-process"]` (differential test, claim `differential.emulated_vs_<native>`). Native without Policy permission is NOT_EVALUATED (`NATIVE_NOT_PERMITTED`) and gives HOLD. There is no automatic substitution between Executors |
+| `[entry] kind` | `raw_offset`, `elf_entry` (ELF executable), `macho_entry` (Mach-O, chapter 12), `symbol` (link file), `object_symbol` (a function symbol in an ELF relocatable object ET_REL, as the routine. `symbol = "name"`. The target is `<isa>/elf/<abi>/none`. If the function contains a relocation, the result is `UNRESOLVED_DEPENDENCY`: Mukoz does not link) |
+| `[selfcheck] checkers` | When the subject is Mukoz itself, a file listing the checkers of the previous version (chapter 06 §6.9). When given, `assessment.independence` becomes `self` / `previous_version`. When not given, it is `independent` |
+| Regression cases | The ID is `reg-<stored digest>` and is the same across runs. The stored filler seed is used as is (the same execution as the original counterexample) |
+| `[generate]` | `seed`, `boundary` (`product` / `none`), `random_cases` |
+| `[generate.vars.<name>]` | `values`: additional values (bv as a decimal / 0x-hex string, bytes as a hex string; not the `hex"..."` form). `len`: expression for the length of bytes (may refer to earlier variables; example `len(input.src) + len(input.src)`). `max`: expression for the upper bound of bv (inclusive; may refer to earlier variables). `bytes`: value range of bytes, `nonzero` / `ascii`. `pieces`: build bytes by concatenating weighted hex fragments (`"c280:20"`). `expr`: give the value directly as an expression over earlier variables (derived input; example: build well-formed file contents from simple variables. Cannot be combined with other items; exceeding `max_len` gives `PLAN_ERROR`). An item that does not fit the type is an error |
+| Boundary values | For bv, {0, 1, max/2, max−1, max} if `max` is given, otherwise the 4.7 default. For bytes, the single length given by `len` if present, otherwise {0, 1, max_len/2, max_len}. `values` is added to these. If the Cartesian product exceeds `max_cases/2`, it switches to "one variable at a time at boundary values, the others random", and reports `plan_stats.boundary_mode = "one_at_a_time"` and `limitations` |
+| Check of generated inputs | `data.assessment.scope.input_summary` shows the range for each variable (bv: min, max, number of distinct values, count of 0 and all-ones; bytes: min and max length, number of distinct lengths, count of empty; bool: counts) |
+| Non-termination | With `must_return`, reaching the instruction limit gives HOLD (`BUDGET_EXHAUSTED`). Non-termination cannot be shown by a finite execution, so it is not REJECT (I1) |
+| Dependent generation | Variables referenced by `len` / `max` are generated first (a cycle is an error). If `len` exceeds the contract's `max_len`, the result is `PLAN_ERROR` (no truncation) |
+| `[limits]` | `instructions_per_case`, `wall_ms_per_case`, `max_cases` (upper limit 8192), `min_admitted_cases`. `guest_memory_bytes` / `trace_bytes_per_case` are not implemented |
+| Generation of region placement | `[generate] placement = "varied"` (default): shifts the start alignment of each region by 0 to 15 bytes per case (derived from the case's seed, so re-runs and regressions get the same placement). `"aligned"` fixes it to a 16-byte boundary. Relative placement between regions and placement at high addresses are not implemented |
+| machine claims | `machine.returned` (including SP restoration), `machine.abi.callee_saved`, `machine.abi.flags` (x86 DF), `machine.abi.reserved` (x18 of apple-arm64 only), `machine.memory.access`, `effects.no_forbidden`. `machine.abi.stack` is not an independent claim and is included in `machine.returned` |
+| Expressions | The typed expressions of 4.4. Integer literals state the width explicitly as `bvN(...)` (a bare integer in a contract is `CONTRACT_TYPE_ERROR`). `mukoz expr check` checks syntax only; types are checked when the contract is loaded |
+| Range of `forall` / `count` / `join` | Up to 65,536 per expression. `join i in a..b: <bytes>` concatenates the bodies (the result is up to 1 MiB) |
+| Additional functions | `dec(bv)`: unsigned decimal string (bytes). `u16le` / `u32le` / `u64le(bytes, off)`: little-endian reads (out of range is an evaluation error → INCONCLUSIVE) |
+| Process Binding and environment model | Chapter 12 |

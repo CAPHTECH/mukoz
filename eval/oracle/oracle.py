@@ -1,4 +1,4 @@
-"""Hidden final judgement for the comparison experiment (docs/11 11.2).
+"""Hidden final judgement for the comparison experiment (agents with and without Mukoz).
 
 Independent of Mukoz: Python references written by hand, a C runner executing
 the submitted code natively on this x86-64 host. Cases are generated with a

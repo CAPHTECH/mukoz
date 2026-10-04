@@ -1,4 +1,4 @@
-//! Fixture expectations written before running them (docs/11 M02).
+//! Fixture expectations written before running them (docs/09 §9.7).
 //! Each mutated fixture must be rejected for the announced property (I4),
 //! and unsupported/budget cases must be HOLD, never ACCEPT (I1).
 
@@ -277,7 +277,7 @@ fn pfx(n: &str) -> String {
     format!("fixtures/process/{n}")
 }
 
-// docs/13: a Linux process (raw or static ELF, both ISAs) with modeled write/exit.
+// docs/12: a Linux process (raw or static ELF, both ISAs) with modeled write/exit.
 #[test]
 fn process_stdout_and_exit_status() {
     for (suite, art) in [
@@ -328,7 +328,7 @@ fn dynamic_or_pie_elf_is_refused() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-// docs/13 13.3-13.4: modules joined by a link file; monitors at the call boundary say
+// docs/12 §12.3–12.4: modules joined by a link file; monitors at the call boundary say
 // whether the caller broke the callee's requires or the callee broke its ensures / the ABI.
 #[test]
 fn link_monitors_assign_blame() {

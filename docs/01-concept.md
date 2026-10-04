@@ -1,91 +1,91 @@
-# 01 概念と保証の境界
+# 01 Concept and the boundary of guarantees
 
-## 1.1 Mukozがすること
+## 1.1 What Mukoz does
 
 ```text
-成果物 + 契約 + Binding + 環境モデル + 実行方針
+artifact + contract + Binding + environment model + execution policy
                     │
                     ▼
                   Mukoz
                     │
                     ▼
-  性質ごとの結果 / 反例 / 保証範囲 / 検査できなかった事項
+  per-property results / counterexamples / scope / what could not be checked
 ```
 
-- **成果物(Artifact)**: 実行ファイル全体、または入口を明示した機械語ルーチン。ソースコードやデバッグ情報は任意の補助情報。
-- 作り方(コンパイラ、AIの直接生成、手書きアセンブリ)は問わない。判定の根拠は生成者の説明ではなく、契約と観測である。
-- Mukozは**バイナリ上のユニットテスト**を行う。粒度はユニットテストと同じでよく、違うのは「最終成果物そのものを調べる」点である。
+- **Artifact**: a whole executable file, or a machine-code routine with an explicit entry point. Source code and debug information are optional auxiliary information.
+- How the artifact was made (compiler, direct AI generation, hand-written assembly) does not matter. The basis of a verdict is the contract and observation, not the generator's explanation.
+- Mukoz does **unit tests on binaries**. The granularity may be the same as a unit test; the difference is that it checks "the final artifact itself".
 
-ユニットの境界は次の組で定める。
+The boundary of a unit is defined by the following tuple.
 
 ```text
-Unit = 入口 + 初期状態 + 呼出し規約 + 許可された作用 + 完了条件
+Unit = entry point + initial state + calling convention + permitted effects + completion condition
 ```
 
-関数名が消えても、この境界を成果物ごとのBindingで指定できる。最適化済みバイナリから境界を自動復元することは目標にしない。
+Even when function names are gone, this boundary can be specified per artifact in a Binding. Automatically recovering boundaries from an optimized binary is not a goal.
 
-## 1.2 原則
+## 1.2 Principles
 
-| ID | 原則 |
+| ID | Principle |
 |---|---|
-| P1 | 正解は契約から決める。成果物の出力や生成者の説明から期待値を逆算しない。 |
-| P2 | 契約(何が正しいか)とBinding(どのレジスタ・メモリに対応するか)を分ける。契約はISAに依存しない。 |
-| P3 | 検査できなかったこと(未対応・観測不能・予算超過・欠測)を成功に変えない。 |
-| P4 | 結果は、対象・契約・Binding・環境モデル・実行プラットフォーム・検査器の版に結び付けて保存する。別の対象へ転用しない。 |
-| P5 | 対応していない命令・syscall・形式を、黙ってホストへ逃がしたり、NOPや成功応答に置き換えたりしない。 |
-| P6 | 実行ホストと検査対象プラットフォームを独立に扱う。特定のホストやISAを前提にした概念を中核に置かない。 |
-| P7 | テストの合否と、リリース・デプロイの許可を別の情報にする。Mukozは後者を出さない。 |
-| P8 | 生成者と判定者を同一視しない。AIの自己申告を採否の条件にしない。 |
+| P1 | The correct answer is determined from the contract. Do not work backwards to the expected value from the artifact's output or the generator's explanation. |
+| P2 | Separate the contract (what is correct) from the Binding (which registers and memory it corresponds to). The contract does not depend on the ISA. |
+| P3 | What could not be checked (unsupported, unobservable, over budget, missing measurement) is not turned into success. |
+| P4 | Store results tied to the subject, contract, Binding, environment model, execution platform, and checker version. Do not reuse them for another subject. |
+| P5 | Do not silently pass unsupported instructions, syscalls, or formats through to the host, or replace them with a NOP or a success response. |
+| P6 | Treat the execution host and the target platform independently. Do not put concepts that assume a specific host or ISA at the core. |
+| P7 | Keep the pass/fail of a test and the permission to release or deploy as separate pieces of information. Mukoz does not emit the latter. |
+| P8 | Do not equate the generator with the judge. Do not make the AI's self-report a condition of admission. |
 
-## 1.3 主張の種類
+## 1.3 Kinds of claims
 
-| 主張 | 例 | 根拠と制限 |
+| Claim | Example | Basis and limits |
 |---|---|---|
-| 構造 | ELFのprogram headerが整合する | パーサと構造規則。機能の正しさではない。 |
-| 有限の振る舞い | 4,160ケースで加算契約を満たした | 実行したケース・環境モデル・実行プラットフォームに限る。 |
+| Structure | The ELF program headers are consistent | Parser and structural rules. Not functional correctness. |
+| Finite behavior | The addition contract was satisfied in 4,160 cases | Limited to the cases run, the environment model, and the execution platform. |
 
-全入力についての主張(有界モデル検査・refinement)は本書群の範囲外とし、データモデル上の拡張余地だけ残す([10](10-decisions.md))。
+Claims about all inputs (bounded model checking, refinement) are outside the scope of this document set; only room for extension in the data model is kept ([10](10-decisions.md)).
 
-次のことを区別して書く。
+Distinguish the following when writing.
 
-- 逆アセンブルできたことは、正しさの根拠ではない。
-- 多数のケースで成功したことは、全入力での正しさではない。
-- エミュレータ上での成功は、実OSのローダーに受け入れられることを示さない。
-- 実機での成功は、未観測の作用(ファイル書込み、通信)がなかったことを示さない。
+- Being able to disassemble is not evidence of correctness.
+- Success in many cases is not correctness on all inputs.
+- Success on an emulator does not show that the real OS loader accepts the artifact.
+- Success on real hardware does not show that there were no unobserved effects (file writes, communication).
 
-## 1.4 契約で気を付けること
+## 1.4 Points to watch in contracts
 
-- **数値の意味を足さない。** 数学的な整数の加算を要求する契約に対して、64bit wrapping加算は一般に適合しない。wrappingを契約に書くか、入力範囲を制限するか、overflow時の結果を書く。
-- **事前条件違反時の振る舞いを捏造しない。** `requires n > 0` から「n ≤ 0 なら拒否する」は導けない。不正入力の応答を調べるなら、その契約を書く。
-- **フレームと書込み禁止を分ける。** 「復帰時に元通り」と「実行中に一度も書かない」は別の性質である。
-- **Bindingを証明と呼ばない。** Bindingが成果物の範囲内を指すことと、意味として正しい対応であることは別。後者は仮定として残る。
+- **Do not add numeric meaning.** A 64-bit wrapping addition generally does not satisfy a contract that requires mathematical integer addition. Either write the wrapping into the contract, restrict the input range, or write the result on overflow.
+- **Do not fabricate behavior on precondition violation.** "Reject if n ≤ 0" cannot be derived from `requires n > 0`. To check the response to invalid input, write that contract.
+- **Separate the frame from the write prohibition.** "Restored on return" and "never written during execution" are different properties.
+- **Do not call a Binding a proof.** That a Binding points inside the artifact's range and that it is a semantically correct correspondence are different things. The latter remains an assumption.
 
-## 1.5 範囲外
+## 1.5 Out of scope
 
-次は範囲外とする。拡張用の境界だけ用意する。
+The following are out of scope. Only boundaries for extension are provided.
 
-- 任意のGUIアプリ・OS全体・動的リンカ・言語ランタイムの再現
-- カーネル・ドライバ、マルチスレッドの網羅探索
-- JIT・自己書換えコード、側信道、停止性の証明
-- 汎用マルウェアsandboxとしての利用
-- 形式検証(全入力の証明)、上位仕様言語との連携
+- Reproducing arbitrary GUI applications, the whole OS, dynamic linkers, and language runtimes
+- Kernels, drivers, and exhaustive exploration of multithreading
+- JIT and self-modifying code, side channels, and proofs of termination
+- Use as a general-purpose malware sandbox
+- Formal verification (proofs over all inputs) and integration with higher-level specification languages
 
-パーサが読める形式と、実行・検査できる形式を同一視しない。
+Do not equate formats the parser can read with formats that can be executed and checked.
 
-## 1.6 用語
+## 1.6 Terms
 
-| 用語 | 意味 |
+| Term | Meaning |
 |---|---|
-| Artifact | 検査する成果物の不変スナップショット。digestで識別する。 |
-| Contract | 入力・状態・事前条件・事後条件・許可作用・完了条件。ISA非依存。 |
-| Binding | 契約の変数と、成果物の入口・レジスタ・メモリ・作用との対応。プラットフォーム依存。 |
-| Suite | 入力の生成方法・ケース数・予算・必須claimの組。 |
-| Target platform | 検査対象側の (ISA, 形式, ABI, OS) の組。[02](02-platform-model.md) |
-| Host platform | Mukozが動くホストの (OS, CPU) と版。 |
-| Executor | 対象を動かす方式。emulated / native / translated。 |
-| Environment model | 対象から見えるOS・外部の振る舞いのモデル(syscall応答、故障注入)。 |
-| Plan | 上のすべてを固定し、ケース集合まで展開したもの。不変。 |
-| Run | Planの1回の実行と、その観測。 |
-| Claim | 1つの性質についての結果と、その範囲。 |
-| Counterexample | 失敗を再現するための具体的な入力・初期状態・環境応答。 |
-| Assessment | 現在のcontextに照らした採否(ACCEPT_WITHIN_SCOPE / HOLD / REJECT)。 |
+| Artifact | An immutable snapshot of the artifact to check. Identified by digest. |
+| Contract | Inputs, state, preconditions, postconditions, permitted effects, and completion condition. ISA-independent. |
+| Binding | The correspondence between the contract's variables and the artifact's entry point, registers, memory, and effects. Platform-dependent. |
+| Suite | A set of how inputs are generated, the number of cases, the budget, and the required claims. |
+| Target platform | The (ISA, format, ABI, OS) tuple on the subject side. [02](02-platform-model.md) |
+| Host platform | The (OS, CPU) and versions of the host on which Mukoz runs. |
+| Executor | The way the subject is run. emulated / native / translated. |
+| Environment model | A model of the OS and external behavior seen from the subject (syscall responses, fault injection). |
+| Plan | Everything above fixed and expanded into a case set. Immutable. |
+| Run | One execution of a Plan, and its observations. |
+| Claim | The result for one property, and its scope. |
+| Counterexample | The concrete input, initial state, and environment responses needed to reproduce a failure. |
+| Assessment | The admission (ACCEPT_WITHIN_SCOPE / HOLD / REJECT) against the current context. |

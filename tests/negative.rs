@@ -1,4 +1,4 @@
-//! Negative tests of the judge (docs/09 9.7 "判定器の負の試験", 9.8 items 3–5): stale verdicts,
+//! Negative tests of the judge (docs/09 §9.7 "negative tests of the checker", §9.8 items 3–5): stale verdicts,
 //! empty scopes, determinism, case isolation, malformed and oversized input, path escapes and
 //! subjects that print text imitating a verdict.
 

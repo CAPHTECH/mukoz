@@ -1,30 +1,30 @@
-# 08 セキュリティと信頼境界
+# 08 Security and trust boundaries
 
-## 8.1 想定する脅威
+## 8.1 Assumed threats
 
-AIや人が誤って作った不正な命令列・形式に加えて、入力ファイル・契約の文字列・Binding・対象の出力が悪意を持つ場合を考える。
+In addition to invalid instruction sequences and formats made by mistake by an AI or a person, we consider the case where the input files, the strings in the contract, the Binding, and the subject's output are malicious.
 
-- 無限ループ、過大なメモリ要求、ログの増幅
-- パーサやエミュレータの脆弱性を突く入力
-- out-of-bounds、任意の外部作用(ファイル・通信・子プロセス)
-- 証跡の偽装、検査後のファイル差し替え
-- 対象の出力に仕込んだ指示(prompt injection)
+- Infinite loops, excessive memory requests, log amplification
+- Input that exploits vulnerabilities in the parser or the emulator
+- Out-of-bounds access, arbitrary external effects (files, network, child processes)
+- Forged evidence, replacing a file after inspection
+- Instructions planted in the subject's output (prompt injection)
 
-初期版は汎用のマルウェアsandboxを名乗らない。エミュレータ・パーサ・OS・ハードウェアの脆弱性、強い権限を持つ攻撃者を排除したとは主張しない。
+The initial version does not claim to be a general-purpose malware sandbox. It does not claim to have excluded vulnerabilities in the emulator, parser, OS, or hardware, or attackers with strong privileges.
 
-## 8.2 既定の動作
+## 8.2 Default behavior
 
-- まず実行しない検査(`inspect`)を行う。
-- 既定で使えるのは `emulated` だけ。`native-routine`・`native-process`・`translated-process` は、Policyで**対象のdigestを指定して**許可したものか、生成ループ用の試行区域(8.4)の条件を満たすものに限る。
-- 対象にホストの HOME、認証情報、SSH agent、クラウドトークン、ソケットを渡さない。環境変数は既定で空。
-- 未対応のsyscall・import・命令をホストへ逃がさない。
-- スナップショットは実行用の一時領域に置き、契約・Policy・証跡への書込み権限を対象に与えない。
+- Do the non-executing inspection (`inspect`) first.
+- Only `emulated` is available by default. `native-routine`, `native-process`, and `translated-process` are limited to those allowed by the Policy **by specifying the subject's digest**, or those that meet the conditions of the trial zone for the generation loop (§8.4).
+- Do not pass the host's HOME, credentials, SSH agent, cloud tokens, or sockets to the subject. Environment variables are empty by default.
+- Do not let unsupported syscalls, imports, or instructions escape to the host.
+- Place snapshots in a temporary area for execution, and do not give the subject write permission to the contract, the Policy, or the evidence.
 
-通常のプロセス分離と環境変数の削除だけでは、ファイルシステムや通信は遮断できない。必要な強制能力がなければ、その危険は残ったものとして扱い、Policyの判断に戻す。
+Ordinary process separation and removing environment variables alone cannot block the file system or the network. If the necessary enforcement capability is absent, treat that danger as remaining, and return the decision to the Policy.
 
-## 8.3 隔離能力
+## 8.3 Isolation capabilities
 
-能力を列挙し、そのホストで**実際に試して効いたもの**だけを返す(02章 2.5)。
+Enumerate the capabilities, and return only those that were **actually tried and shown to work** on that host (chapter 02 §2.5).
 
 ```text
 process_isolation
@@ -36,24 +36,24 @@ credential_isolation
 artifact_immutability
 ```
 
-| OS | 候補となる仕組み | 現ホストでの確認 |
+| OS | Candidate mechanisms | Confirmation on the current host |
 |---|---|---|
-| Linux | rlimit、cgroup v2(メモリ・子孫停止)、user namespace + network namespace(通信遮断)、Landlock(ファイルシステム制限)、seccomp(syscall制限) | cgroup v2 がマウント済み、LSMに landlock がある、`unshare -Urn true` が1回成功。cgroupの委譲の有無、Landlock・seccompが実際に効くかは `[U]` |
-| macOS | rlimit、プロセスグループ。sandbox系の仕組みは実機で試してから判断 | 未確認(ホストなし) |
-| Windows | Job Object(資源・子孫停止)、AppContainer 等 | 未確認(ホストなし) |
+| Linux | rlimit, cgroup v2 (memory, stopping descendants), user namespace + network namespace (network blocking), Landlock (file system restriction), seccomp (syscall restriction) | cgroup v2 is mounted, the LSM list includes landlock, and `unshare -Urn true` succeeded once. Whether cgroup delegation exists, and whether Landlock and seccomp actually work, are `[U]` |
+| macOS | rlimit, process group. For sandbox-type mechanisms, decide after trying them on a real machine | Unverified (no host) |
+| Windows | Job Object (resources, stopping descendants), AppContainer, etc. | Unverified (no host) |
 
-- プロセスグループの終了だけで、離脱した子孫を必ず止められるとはしない。
-- VMのように環境ごと破棄できる方式と、普通の子プロセス方式を同じ扱いにしない。
-- MVPの必須条件は「隔離能力がないことを正しく報告する」こと。万能なsandboxの実装を出荷条件にしない。
+- Terminating the process group alone is not assumed to always stop descendants that have detached.
+- Do not treat approaches that can discard the whole environment, such as a VM, the same as the ordinary child-process approach.
+- The required condition for the MVP is to "correctly report that isolation capabilities are absent". Shipping an all-purpose sandbox is not a release condition.
 
-## 8.4 生成ループでのnative実行(試行区域)
+## 8.4 Native execution in the generation loop (trial zone)
 
-digestごとの許可だけでは、AIが新しいバイナリを作るたびに人の許可が要り、生成と検査の繰り返しが止まる。そこで、**隔離能力が確認できたときに限り**、特定の場所の成果物をまとめて許可する規則を設ける。既定では無効で、所有者が `policy.toml` に書いたときだけ働く。
+With permission per digest alone, a human permission is needed every time the AI builds a new binary, and the loop of generation and inspection stops. So we provide a rule that permits the artifacts in a specific location as a group, **only when the isolation capabilities are confirmed**. It is disabled by default and takes effect only when the owner writes it in `policy.toml`.
 
 ```toml
 [[native_trial_zones]]
 id = "ai-build"
-artifact_dir = "build/"                     # この下のファイルだけ。シンボリックリンクは辿らない
+artifact_dir = "build/"                     # only files under this directory. Symbolic links are not followed
 executors = ["native-routine", "native-process"]
 targets = ["x86_64/raw/sysv-x86_64/none", "x86_64/elf/sysv-x86_64/linux"]
 require_isolation = [
@@ -66,35 +66,35 @@ require_isolation = [
 max_wall_ms_per_case = 1000
 ```
 
-**規則:**
+**Rules:**
 
-1. 成果物のスナップショットが `artifact_dir` の下から読まれ、ターゲットとExecutorが一覧にあり、`require_isolation` の**すべて**がそのホストの `HostProbe` で確認済みのときだけ実行する。
-2. 1つでも欠ければ実行せず、そのclaimを NOT_EVALUATED にする(理由 `NATIVE_NOT_PERMITTED`、欠けた能力の一覧付き)。emulated へ切り替えない。
-3. 実行時、対象は確認済みの隔離を**すべて適用した状態**で起動する。probeで確認したことと、その回に適用したことの両方を証跡に残す。
-4. 試行区域で実行した結果には、区域IDと適用した隔離を `execution_platform` に付ける。
+1. Execute only when the artifact's snapshot is read from under `artifact_dir`, the target and the Executor are in the lists, and **all** of `require_isolation` are confirmed by the `HostProbe` of that host.
+2. If even one is missing, do not execute, and set the claim to NOT_EVALUATED (reason `NATIVE_NOT_PERMITTED`, with the list of missing capabilities). Do not switch to emulated.
+3. At execution, the subject is launched with **all confirmed isolation applied**. Record in the evidence both what the probe confirmed and what was applied in that run.
+4. For results executed in a trial zone, attach the zone ID and the applied isolation to `execution_platform`.
 
-**`native-routine` の追加条件:** ルーチンはsyscallを使わないはずなので、Linuxでは seccomp の strict モード(read・write・exit・sigreturn 以外のsyscallで終了させる)をトランポリンの直前に適用する。適用できないホストでは `native-routine` を試行区域で使えない。`[R]` strict モードは古くからある最小のseccompで、プロセスが自分に適用できる。現ホストで効くかは未確認 `[U]`。
+**Additional condition for `native-routine`:** A routine is not expected to use syscalls, so on Linux seccomp strict mode (terminate on any syscall other than read, write, exit, and sigreturn) is applied just before the trampoline. On a host where it cannot be applied, `native-routine` cannot be used in a trial zone. `[R]` Strict mode is the oldest, minimal form of seccomp, and a process can apply it to itself. Whether it works on the current host is unverified `[U]`.
 
-**`native-process` の候補(Linux):** user namespace + network namespace(通信遮断)、Landlock(読める場所を対象ファイルと最小限に限定、書込み不可)、rlimit(CPU時間・メモリ・ファイルサイズ・プロセス数)、cgroup v2(子孫の停止)、空の環境変数と専用の一時HOME。どれが実際に効くかは probe で確かめる(現ホストで確認済みなのは `unshare -Urn true` の成功1回だけ)。
+**Candidates for `native-process` (Linux):** user namespace + network namespace (network blocking), Landlock (limit readable places to the subject file and the minimum, no writes), rlimit (CPU time, memory, file size, number of processes), cgroup v2 (stopping descendants), empty environment variables and a dedicated temporary HOME. Which of these actually work is confirmed by the probe (on the current host, the only thing confirmed is one success of `unshare -Urn true`).
 
-**残るリスク:** 隔離の仕組み自体やカーネルの脆弱性を突く対象は防げない。試行区域は「AIの誤り(暴走・誤った書込み・意図しない通信)からホストを守る」ためのもので、悪意あるコードへの防御を主張しない。所有者がこのリスクを受け入れて有効にする。
+**Remaining risk:** A subject that exploits a vulnerability in the isolation mechanism itself or in the kernel cannot be stopped. The trial zone is meant to "protect the host from AI mistakes (runaway behavior, wrong writes, unintended communication)", and it does not claim defense against malicious code. The owner accepts this risk and enables it.
 
-## 8.5 TOCTOU と同一ユーザー
+## 8.5 TOCTOU and the same user
 
-- 計画はパスではなくスナップショット(digest)に結び付け、実行の前後で digest を検査する。
-- Linuxの `native-process` は、スナップショットを memfd に置いて fd から起動することで、パスの再解決をなくす(05章 5.5)`[R]`。他のOSではコピーしたファイルのパスが再解決されるので、同じユーザーの攻撃者が差し替えられる余地を記録する。
-- `.mukoz/` と `policy.toml` は論理的な分離であり、強制的な権限分離ではない。同じユーザーに任意のshellを許していれば書き換えられる。強い完全性が必要なら、別ユーザー・別環境に置く。
+- Bind the plan to the snapshot (digest), not to the path, and check the digest before and after execution.
+- Linux `native-process` places the snapshot in a memfd and launches from the fd, which removes path re-resolution (chapter 05 §5.5) `[R]`. On other OSes the path of the copied file is re-resolved, so record the room for an attacker running as the same user to swap it.
+- `.mukoz/` and `policy.toml` are logical separation, not enforced privilege separation. If an arbitrary shell is allowed to the same user, they can be rewritten. If strong integrity is needed, place them under a different user or in a different environment.
 
-## 8.6 外部データと prompt injection
+## 8.6 External data and prompt injection
 
-- 対象のstdoutに `"admission": "ACCEPT"` のような文字列や「基準を変えよ」という文が含まれても、制御情報として扱わない。
-- 出力には、対象由来のデータを `untrusted` と印を付けた専用フィールドにだけ入れ、制御文字をエスケープする。
-- ファイルパス、シンボル名、注釈も信頼しないデータとして扱い、出所と種類を付けて返す。
+- Even if the subject's stdout contains a string such as `"admission": "ACCEPT"` or a sentence such as "change the criteria", it is not treated as control information.
+- In the output, put subject-derived data only in dedicated fields marked `untrusted`, and escape control characters.
+- File paths, symbol names, and annotations are also treated as untrusted data, and are returned with their origin and kind attached.
 
-## 8.7 信頼の基盤
+## 8.7 Foundations of trust
 
-具体的なテストで信頼するもの: Inspector、ローダー、Binding評価、エンジン(Unicorn)またはOSのプロセス実行、作用モデル、式評価器、Assessor、OS・ハードウェア、証跡の保存。
+What is trusted through concrete tests: the Inspector, the loader, Binding evaluation, the engine (Unicorn) or the OS process execution, the effect model, the expression evaluator, the Assessor, the OS and hardware, and evidence storage.
 
-- **生成者を信頼対象から外すことと、信頼対象がなくなることは別である。**
-- 同じAIが対象と契約の両方を作ってもよいが、それだけでは独立性は得られない。契約の承認、別の参照実装との比較、手で確定した値との照合で、共通の誤解を見つける経路を持つ。
-- Mukoz自身を検査する場合は、判定器の独立性を claim に記録する(06章 6.9、09章 9.6)。
+- **Removing the generator from the set of trusted parties is different from having no trusted party left.**
+- The same AI may produce both the subject and the contract, but that alone does not give independence. Have routes to find shared misunderstandings: contract approval, comparison with a separate reference implementation, and checking against values fixed by hand.
+- When Mukoz itself is the subject of inspection, record the checker's independence in a claim (chapter 06 §6.9, chapter 09 §9.6).

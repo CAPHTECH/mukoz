@@ -1,4 +1,4 @@
-//! What gets mapped before execution (docs/13): a raw file, a static ELF, or
+//! What gets mapped before execution (docs/12): a raw file, a static ELF, or
 //! several raw modules joined by a link file, plus boundary monitors.
 
 use crate::expr::{Expr, Ty};

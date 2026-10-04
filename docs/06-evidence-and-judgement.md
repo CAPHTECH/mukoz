@@ -1,194 +1,194 @@
-# 06 証跡と判定
+# 06 Evidence and verdicts
 
-## 6.1 検査の4分類
+## 6.1 Four categories of checks
 
-| 分類 | 例 |
+| Category | Examples |
 |---|---|
-| Artifact | header整合、入口の範囲、依存の解決 |
-| Machine | ABIの保存規則、SP、制御移行、メモリアクセス、予算 |
-| Effect | stdout/stderr、exit、禁止作用の試行、作用の順序 |
-| Semantic | 加算結果、状態の更新、エラー結果、frame |
+| Artifact | Header consistency, entry point scope, dependency resolution |
+| Machine | ABI preservation rules, SP, control transfer, memory access, budget |
+| Effect | stdout/stderr, exit, attempts at forbidden effects, order of effects |
+| Semantic | Addition result, state update, error result, frame |
 
-Semantic は Binding を介して観測する。Machine が通っても Semantic の代わりにはならない。
+Semantic checks are observed through a Binding. Passing Machine checks does not substitute for Semantic checks.
 
-## 6.2 メモリの条件
+## 6.2 Memory conditions
 
-次は別々の条件として扱う。
+Treat the following as separate conditions.
 
 ```text
-mapped           エンジンがアクセスできる
-owned            契約上、その領域が誰のものか
-initialized      初期値が決まっている
-allowed_read     読んでよい
-allowed_write    実行中に書いてよい
-unchanged_at_end 終了時に開始時と等しくなければならない
+mapped           the engine can access it
+owned            by contract, whose region it is
+initialized      the initial value is determined
+allowed_read     may be read
+allowed_write    may be written during execution
+unchanged_at_end must equal its value at the start when execution ends
 ```
 
-- 対象外の領域へ書いてから元に戻す動作を禁止したいなら、終了時の比較ではなく全書込みの監視が必要。
-- アクセス幅を含む `[addr, addr+width)` が許可領域に完全に収まることを確認する。アドレス加算のoverflow、領域をまたぐアクセスも扱う。
-- 未初期化領域の読込みを契約で禁止するなら policy 違反として検出する。任意の初期値を許すなら、その値を入力として変化させる。ランダムな初期値での成功を、全初期値での成功としない。
+- To forbid writing to an out-of-scope region and then restoring it, a comparison at the end is not enough. Monitoring of all writes is required.
+- Check that `[addr, addr+width)`, including the access width, fits entirely inside an allowed region. Also handle overflow in address addition and accesses that cross regions.
+- If the contract forbids reading uninitialized regions, detect a violation as a policy violation. If any initial value is allowed, vary that value as an input. Do not treat success with a random initial value as success for all initial values.
 
-## 6.3 作用の観測と強制
+## 6.3 Observing and enforcing effects
 
-能力ごとに、**観測できるか**と**強制的に止められるか**を分けて持つ。
+For each capability, keep **whether it can be observed** and **whether it can be forcibly stopped** as separate values.
 
-| 能力 | emulated(ルーチン) | emulated(プロセス+作用モデル) | native-routine | native-process |
+| Capability | emulated (routine) | emulated (process + effect model) | native-routine | native-process |
 |---|---|---|---|---|
-| レジスタ | 観測 | 観測 | 入口・出口のみ観測 | 不可 |
-| メモリアクセス | 全アクセスを観測・強制 | 同左 | ページ単位の強制のみ | 不可 |
-| stdout/stderr | 作用は禁止 | 仮想バイト列 | 作用は不可 | 実バイト列 |
-| syscall試行 | 観測・強制 | 許可分をモデル化、他は停止 | 初期は不可 | 初期は不可 |
-| 通信の不在 | モデル内で確認 | 許可以外を停止 | 断定不可 | 断定不可(隔離能力があれば強制のみ) |
-| ホストの保護 | worker分離だけでは保証しない | 同左 | 同左 | 隔離能力が必要(08章) |
+| Registers | Observe | Observe | Observe at entry and exit only | Not possible |
+| Memory access | Observe and enforce all accesses | Same as left | Page-level enforcement only | Not possible |
+| stdout/stderr | Effect is forbidden | Virtual byte string | Effect is not possible | Real byte string |
+| Syscall attempts | Observe and enforce | Model the allowed ones, stop on others | Initially not possible | Initially not possible |
+| Absence of communication | Confirm inside the model | Stop anything not allowed | Cannot be asserted | Cannot be asserted (enforcement only, if an isolation capability exists) |
+| Host protection | Not guaranteed by worker separation alone | Same as left | Same as left | Isolation capability required (chapter 08) |
 
-「通信を試みてはならない」と「通信が外に出ない」は別の性質である。隔離で送信を止めても前者の違反は起こり得る。また、隔離で作用を止めたことで対象の振る舞いが変わることがあるので、隔離環境の結果を無制限な環境へ一般化しない。
+"Must not attempt communication" and "communication does not leave the machine" are different properties. Even if isolation stops the send, a violation of the former can still occur. Also, stopping an effect through isolation can change the subject's behavior, so do not generalize a result from an isolated environment to an unrestricted environment.
 
-## 6.4 Claim の軸
+## 6.4 Claim axes
 
-結果を1つのPASSにまとめない。性質ごとに次を持つ。
+Do not collapse a result into a single PASS. Keep the following for each property.
 
-| 軸 | 値 | 意味 |
+| Axis | Values | Meaning |
 |---|---|---|
-| `evaluation` | `SATISFIED_IN_SCOPE` `VIOLATED` `INCONCLUSIVE` `NOT_EVALUATED` | その性質について分かったこと |
-| `method` | `structure` `example` `property` `differential` | 検査方式 |
-| `execution` | `completed` `budget_exhausted` `worker_failed` `blocked` `unsupported` | 実行の終わり方 |
-| `platform` | Executor・ホスト・エンジン(03章 3.5) | どこで得たか |
-| `independence` | `independent` `previous_version` `self` | 判定器と対象の関係(6.9) |
-| `context_match` | `true` / `false` | 現在の subject context に当てはまるか |
+| `evaluation` | `SATISFIED_IN_SCOPE` `VIOLATED` `INCONCLUSIVE` `NOT_EVALUATED` | What was learned about that property |
+| `method` | `structure` `example` `property` `differential` | Checking method |
+| `execution` | `completed` `budget_exhausted` `worker_failed` `blocked` `unsupported` | How the execution ended |
+| `platform` | Executor, host, engine (chapter 03 §3.5) | Where the result was obtained |
+| `independence` | `independent` `previous_version` `self` | Relation between the checker and the subject (§6.9) |
+| `context_match` | `true` / `false` | Whether it applies to the current subject context |
 
-形式検証の値(`exhaustive_within_domain` `solver_checked` 等)はデータモデルに予約するが、実装されるまで出力しない。
+Values for formal verification (`exhaustive_within_domain`, `solver_checked`, etc.) are reserved in the data model but are not output until they are implemented.
 
-## 6.5 監視とtraceの欠落
+## 6.5 Gaps in monitoring and trace
 
 ```text
-monitoring_complete      判定に必要な監視を最後まで行えたか
-trace_storage_truncated  保存した詳細traceに省略があるか
-response_truncated       今回の応答が一部だけか
+monitoring_complete      whether the monitoring needed for the verdict ran to the end
+trace_storage_truncated  whether the stored detailed trace has omissions
+response_truncated       whether this response is only partial
 ```
 
-表示用traceを省いても、監視がすべて行われていれば判定は保てる。監視イベント自体を落とした場合は、該当claimを INCONCLUSIVE にする。
+Omitting the display trace does not break the verdict if all monitoring was performed. If a monitoring event itself was dropped, make the affected claim INCONCLUSIVE.
 
-## 6.6 採否(Assessment)
+## 6.6 Admission (Assessment)
 
 ```text
-if subject_context が現在と一致しない:
+if subject_context does not match the current one:
     HOLD (STALE_CONTEXT)
-else if 現contextで有効な、必須claimの反例がある:
+else if there is a counterexample to a required claim that is valid in the current context:
     REJECT
-else if 必須claimに NOT_EVALUATED / INCONCLUSIVE / 欠測 / 未完了がある:
+else if a required claim has NOT_EVALUATED / INCONCLUSIVE / missing data / incomplete execution:
     HOLD
-else if Policy が要求する platform 範囲を満たさない:
+else if the platform scope required by the Policy is not met:
     HOLD (PLATFORM_SCOPE_UNMET)
-else if 有効ケースが0、または必要な状況に到達していない:
+else if there are 0 valid cases, or a required situation was not reached:
     HOLD (VACUOUS_SCOPE)
 else:
     ACCEPT_WITHIN_SCOPE
 ```
 
-- 後続ケースのworker障害が、すでに得た反例を消すことはない。
-- `--fail-fast`(07章)で最初の反例の後に残りのケースを実行しなかった場合も、REJECT は有効である。REJECT に必要なのは現contextで有効な反例1つだからである。ただし未実行のケース数を `scope` に出し、「他の性質は満たしていた」とは書かない。
-- 古いartifactの反例を、新しいartifactの REJECT に使わない。新しいrunで再現させる。
-- 未知のclaim種別・評価値を受け取ったクライアントは HOLD とみなす(推測でPASSにしない)。
-- `release_authorized` は常に `false`。
+- A worker failure in a later case never erases a counterexample already obtained.
+- REJECT is also valid when `--fail-fast` (chapter 07) did not run the remaining cases after the first counterexample. REJECT needs only one counterexample valid in the current context. However, report the number of unexecuted cases in `scope`, and do not write "the other properties were satisfied".
+- Do not use a counterexample from an old artifact for REJECT of a new artifact. Reproduce it in a new run.
+- A client that receives an unknown claim kind or evaluation value treats it as HOLD (it does not guess PASS).
+- `release_authorized` is always `false`.
 
-## 6.7 時間切れと異常終了
+## 6.7 Timeouts and abnormal termination
 
-| 状況 | 扱い |
+| Situation | Handling |
 |---|---|
-| 検査の実行予算を使い切った | INCONCLUSIVE → HOLD |
-| 契約に書いた「N命令以内」を超えた | その性質への VIOLATED |
-| 契約に書いた実時間制限を超えた | その測定条件での違反。測定誤差・再現性を併記 |
-| workerがクラッシュした | `WORKER_FAILED`。対象の異常と同一視しない |
-| 対象が禁止されたメモリアクセスで止まった | 有効な初期状態・対応モデルでの禁止動作なら反例 |
+| The execution budget for the check was used up | INCONCLUSIVE → HOLD |
+| The "within N instructions" written in the contract was exceeded | VIOLATED for that property |
+| The wall-clock limit written in the contract was exceeded | A violation under that measurement condition. State the measurement error and reproducibility alongside |
+| The worker crashed | `WORKER_FAILED`. Not equated with an anomaly in the subject |
+| The subject stopped on a forbidden memory access | A counterexample if it is a forbidden action under a valid initial state and a corresponding model |
 
-`must_return` の契約で一定時間戻らなかったことを、数学的な非停止の証明とはしない。
+Not returning within a set time under a `must_return` contract is not taken as a mathematical proof of non-termination.
 
-## 6.8 差分試験
+## 6.8 Differential test
 
-同じケースを複数のExecutor・ホストで実行し、観測を比べる。
+Run the same case on multiple Executors and hosts and compare the observations.
 
-| 組み合わせ | 得られるもの |
+| Combination | What it yields |
 |---|---|
-| `emulated` と `native-routine`(同ISAホスト) | エミュレータと実CPUの命令意味の差 |
-| `emulated` と `native-process` | 作用モデルと実OSの差 |
-| 別ホストの `emulated` 同士 | ホスト・エンジンビルドによる差 |
-| Contract の参照計算と対象 | 本来の検査 |
+| `emulated` and `native-routine` (same-ISA host) | Differences in instruction semantics between the emulator and the real CPU |
+| `emulated` and `native-process` | Differences between the effect model and the real OS |
+| `emulated` on different hosts | Differences due to host and engine build |
+| The Contract's reference computation and the subject | The check proper |
 
-- 一致は双方の正しさを証明しない。
-- UnicornはQEMU由来なので、UnicornとQEMU(qemu-user)の一致を独立した2実装の一致として扱わない。
-- 不一致の原因(対象、Binding、ABI、作用モデル、エンジン)は不明なので、まず `BACKEND_DIVERGENCE` / `PLATFORM_DIVERGENCE` として、調べられる証跡を返す。
+- Agreement does not prove the correctness of either side.
+- Unicorn derives from QEMU, so do not treat agreement between Unicorn and QEMU (qemu-user) as agreement between two independent implementations.
+- The cause of a mismatch (subject, Binding, ABI, effect model, engine) is unknown, so first return `BACKEND_DIVERGENCE` / `PLATFORM_DIVERGENCE` together with whatever evidence can be examined.
 
-## 6.9 判定器の独立性
+## 6.9 Checker independence
 
-自己検査(09章 9.6)を扱うため、claimに `independence` を持たせる。
+To handle self-check (chapter 09 §9.6), claims carry `independence`.
 
-| 値 | 意味 |
+| Value | Meaning |
 |---|---|
-| `independent` | 判定に使った式評価器・エンジンが、対象と別の実装 |
-| `previous_version` | 対象と同じソース系列だが、別の(前の)版の判定器 |
-| `self` | 判定器と対象が同じソース・同じ版から作られている |
+| `independent` | The expression evaluator and engine used for the verdict are separate implementations from the subject |
+| `previous_version` | The checker comes from the same source lineage as the subject, but is a different (earlier) version |
+| `self` | The checker and the subject are built from the same source and the same version |
 
-- `self` の claim だけで ACCEPT_WITHIN_SCOPE を出すことは、Policyで明示した場合に限る。既定では、`self` だけの必須claimは HOLD にする。
-- 実装(2026-10-05): `assessment.independence` に `value`・`basis`・`checker_sha256` を出す。Suite に `[selfcheck] checkers = "…/checkers.toml"`(schema `mukoz.checkers/1`、`previous = [{ version, sha256 }]`)があるときだけ `self` / `previous_version` を判定し、走っている mukoz の digest が列挙されていれば `previous_version`。`self` で ACCEPT になるはずの run は HOLD `SELF_CHECK_ONLY`。Policy の `allow_self_accept = true` で明示的に許す。
-- 式評価器自体を検査する場合、期待値をその評価器で計算すると循環になる。期待値は、実CPUの命令結果(native-routine / emulated)、手で確定した値の表、別実装のどれかから取る。
+- Issuing ACCEPT_WITHIN_SCOPE from `self` claims alone is allowed only when the Policy states so explicitly. By default, a required claim that is `self` only results in HOLD.
+- Implementation (2026-10-05): `assessment.independence` outputs `value`, `basis` and `checker_sha256`. `self` / `previous_version` is determined only when the Suite has `[selfcheck] checkers = "…/checkers.toml"` (schema `mukoz.checkers/1`, `previous = [{ version, sha256 }]`). If the digest of the running mukoz is listed, it is `previous_version`. A run that would be ACCEPT with `self` becomes HOLD `SELF_CHECK_ONLY`. Policy `allow_self_accept = true` allows it explicitly.
+- When the expression evaluator itself is the subject, computing expected values with that evaluator is circular. Take expected values from one of: the instruction results of a real CPU (native-routine / emulated), a table of hand-determined values, or a separate implementation.
 
-## 6.10 反例・縮小・再実行
+## 6.10 Counterexamples, shrinking and re-execution
 
-反例は少なくとも次を持つ。
+A counterexample has at least the following.
 
 ```text
-artifact / subject context / plan / case のID
-性質ID と failure predicate
-具体的な初期レジスタ・メモリ・入力
-環境応答のスクリプト
-停止理由、PC、直近のtrace、作用
+IDs of artifact / subject context / plan / case
+property ID and failure predicate
+concrete initial registers, memory and inputs
+script of environment responses
+stop reason, PC, recent trace, effects
 expected / observed
 execution_platform
-縮小の探索範囲と完了状態
+search range of shrinking and its completion state
 ```
 
-- 縮小では入力値・バッファ・入力列・環境スクリプトを小さくする。Contract・Bindingの意味・期待値を書き換えて失敗を消さない。事前条件と failure predicate を保つ。
-- 縮小の初期実装は、各入力を0・境界値・短いバイト列へ近づける単純な探索とする。
-- 修正後のartifactで反例が再現しなかったことは「この反例への回帰テストが通った」であり、全体の正しさではない。
+- When shrinking, make the input values, buffers, input sequences and environment script smaller. Do not rewrite the Contract, the meaning of the Binding or the expected values to make the failure go away. Keep the precondition and the failure predicate.
+- The initial shrinking implementation is a simple search that moves each input toward 0, boundary values and short byte strings.
+- That a counterexample did not reproduce on the fixed artifact means "the regression test for this counterexample passed". It does not mean overall correctness.
 
-## 6.11 証跡の格納
+## 6.11 Storing evidence
 
 ```text
 .mukoz/
-  objects/sha256/…     # 不変: artifact, contract, binding, suite, plan, run, claim
+  objects/sha256/…     # immutable: artifact, contract, binding, suite, plan, run, claim
   host/…               # HostProbe, EngineQualification
-  indexes/…            # 派生索引。失っても objects から作り直せる
-  work/…               # workerの一時領域
-policy.toml            # 所有者が書く方針(任意)
+  indexes/…            # derived indexes. Can be rebuilt from objects if lost
+  work/…               # worker scratch area
+policy.toml            # policy written by the owner (optional)
 ```
 
-- SQLサーバや分散ストレージは要らない。content-addressed なファイルを正本とし、索引は派生物とする。
-- ファイルの作成は一時ファイルへの書込みと rename による置換で行い、途中のクラッシュで壊れた objects を残さない。rename・ロックの意味はOSで違うので、Store の実装をOS別に試験する(09章)。
-- object 名は小文字hexのdigestだけにし、大文字小文字を区別しないファイルシステム(macOS・Windowsの既定)でも衝突しないようにする。
-- 証跡に暗号学的な改竄耐性はない。同じユーザーの権限で動くプロセスは `.mukoz/` を書き換えられる(08章)。
-- 全ケースのゲストメモリを丸ごと保存しない。不変ページの共有、初期データと変更ページの記録で容量を抑える。ただし再実行に必要な具体値は必ず復元できるようにする。
-- 証跡容量が足りなくなったら、反例・判定材料を失ったまま成功を返さない。
+- No SQL server or distributed storage is needed. Content-addressed files are the source of truth, and indexes are derived.
+- Create files by writing to a temporary file and replacing it with rename, so that a crash midway leaves no corrupted objects. The semantics of rename and locking differ by OS, so test the Store implementation per OS (chapter 09).
+- Name objects only by a lowercase hex digest, so that names do not collide even on case-insensitive filesystems (the default on macOS and Windows).
+- Evidence has no cryptographic tamper resistance. A process running with the same user's privileges can rewrite `.mukoz/` (chapter 08).
+- Do not store the full guest memory of every case. Keep the size down by sharing immutable pages and recording initial data plus changed pages. However, always make it possible to restore the concrete values needed for re-execution.
+- If evidence capacity runs short, do not return success after losing counterexamples or verdict material.
 
-## 6.12 修正のための診断情報
+## 6.12 Diagnostics for fixing
 
-AIが機械語を直すには、「どの命令で何が起きたか」が最も役に立つ。finding と反例に、判定とは別の**診断情報**を付ける。
+For an AI to fix machine code, "what happened at which instruction" is the most useful information. Attach **diagnostics**, separate from the verdict, to findings and counterexamples.
 
-| 項目 | 内容 | 取得方法 |
+| Item | Content | How obtained |
 |---|---|---|
-| 失敗地点 | 停止したPC、artifact内のoffset、停止理由(禁止アクセス、未対応命令、予算切れ、復帰先違反等) | 監視が記録 |
-| 直近の実行命令 | 停止前に実行した命令を最大64個。アドレス・offset・命令bytes・逆アセンブル | 常時動かす小さなPCリングバッファ(64件)。x86_64のような可変長命令でも、実行したPCから逆アセンブルするので命令境界を誤らない |
-| 違反したアクセス | アドレス、幅、読み書き、どの領域の外か、許可領域の一覧 | メモリ監視 |
-| レジスタの差 | 入口と出口(または停止時)で値が変わったレジスタ。ABI違反ならどのレジスタか | 入口・出口のスナップショット |
-| 値の食い違い | 性質ID、評価した式、各部分式の値(expected/observed)。例: `result.value = 0x…`、`input.a + input.b = 0x…` | 式評価器が部分式の値を残す |
-| 通った経路 | 戻り値が誤っている(停止していない)場合、そのケースで実行した命令の一覧(重複は回数にまとめる、最大256命令) | 実行trace。trace予算を超えたら省略し、省略したことを示す |
-| 差分試験の最初の分岐点 | Executor間で結果が違う場合、最初に状態が食い違った命令(取れる場合) | 両方のtrace |
+| Failure point | The PC at the stop, the offset in the artifact, the stop reason (forbidden access, unsupported instruction, budget exhausted, return-target violation, etc.) | Recorded by monitoring |
+| Recently executed instructions | Up to 64 instructions executed before the stop. Address, offset, instruction bytes, disassembly | A small PC ring buffer (64 entries) that is always running. Even for variable-length instructions such as x86_64, it disassembles from the executed PCs, so instruction boundaries are not wrong |
+| Violating access | Address, width, read or write, which region it was outside of, list of allowed regions | Memory monitoring |
+| Register differences | Registers whose values changed between entry and exit (or at the stop). If it is an ABI violation, which register | Snapshots at entry and exit |
+| Value mismatch | Property ID, the expression evaluated, the value of each subexpression (expected/observed). Example: `result.value = 0x…`, `input.a + input.b = 0x…` | The expression evaluator keeps the subexpression values |
+| Path taken | If the return value is wrong (execution did not stop), the list of instructions executed in that case (duplicates are collapsed into counts, up to 256 instructions) | Execution trace. If the trace budget is exceeded, omit it and indicate the omission |
+| First divergence point of a differential test | If results differ between Executors, the first instruction where the states diverged (when obtainable) | Both traces |
 
-- 診断情報は**判定に使わない**。逆アセンブルには Capstone を使うが、表示用であり、命令の意味の根拠にしない。Capstone が使えない環境では、逆アセンブル欄を省き、省いた理由を書く。命令bytesは常に出す。
-- 診断情報の大きさは finding ごとに上限(既定16 KiB)を持ち、超えたら `show` で段階的に取り出す。
-- `mukoz show <finding-id> --disasm` で、失敗地点の前後を artifact から静的に逆アセンブルした結果も取れる。これは実行したPCに基づかないので、命令境界が誤り得ることを表示に明記する。
+- Diagnostics are **not used for the verdict**. Capstone is used for disassembly, but it is for display and is not the basis for the meaning of instructions. In an environment where Capstone is not available, omit the disassembly column and state why it was omitted. Always output the instruction bytes.
+- The size of diagnostics has a limit per finding (default 16 KiB). If exceeded, retrieve it in stages with `show`.
+- `mukoz show <finding-id> --disasm` also gets a static disassembly, taken from the artifact, of the code around the failure point. This is not based on executed PCs, so the display states clearly that instruction boundaries may be wrong.
 
-## 6.13 AI・人向けの射影
+## 6.13 Projections for AI and humans
 
-- 既定の出力は小さな要約と上位の finding だけにする。
-- 詳細は run / case / property / PC / イベント種別を指定して段階的に取り出す。ページには `total / returned / next_offset / truncated` を付ける。
-- 反例をたどるための安定IDを返す。古い巨大ログを会話へ貼り直す必要をなくす。
+- The default output is only a small summary and the top findings.
+- Details are retrieved in stages by specifying run / case / property / PC / event kind. Pages carry `total / returned / next_offset / truncated`.
+- Return stable IDs for following a counterexample. This removes the need to paste old, huge logs back into the conversation.

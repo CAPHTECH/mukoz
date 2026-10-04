@@ -1,4 +1,5 @@
-AArch64 fixtures are hand-encoded bytes (no AArch64 assembler on the build host).
-- add64.bin: `add x0, x0, x1; ret` (8b010000 d65f03c0)
-- add64_mut_sub.bin: `sub x0, x0, x1; ret` (cb010000 d65f03c0)
-Encodings are from docs 0.4 / hand encoding; behaviour was checked once under Unicorn (docs/devlog.md), not with a disassembler.
+AArch64 fixtures: each `*.s` is assembled into `*.bin` by `build.py` (rustc's
+`aarch64-unknown-linux-gnu` target with `global_asm`, then `llvm-objcopy` from the Rust toolchain;
+needs `rustup target add aarch64-unknown-linux-gnu` and the `llvm-tools` component). `manifest.txt`
+records sizes, SHA-256 digests and the toolchain. The expected outcome of every fixture is the
+table in `tests/coverage.rs`.

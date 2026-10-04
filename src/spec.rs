@@ -112,7 +112,7 @@ pub enum Boundary {
     Process,
 }
 
-/// Effects a process contract may allow (docs/13). `exit` is always allowed.
+/// Effects a process contract may allow (docs/12). `exit` is always allowed.
 pub const PROCESS_EFFECTS: &[&str] = &["read", "write", "open", "close", "lseek"];
 
 #[derive(Debug, Clone)]
@@ -248,7 +248,7 @@ struct BindingFile {
     process: Option<ProcessFile>,
     #[serde(default)]
     files: BTreeMap<String, FileFile>,
-    /// Module layout (docs/13 13.3); relative to the binding file.
+    /// Module layout (docs/12 §12.3); relative to the binding file.
     link: Option<String>,
     completion: CompletionFile,
 }
@@ -303,7 +303,7 @@ struct RegionFile {
     access: String,
     observe_as: Option<String>,
     /// Size when the routine is called by another module and `size` cannot be recovered
-    /// from the argument registers (boundary monitors, docs/13 13.4).
+    /// from the argument registers (boundary monitors, docs/12 §12.4).
     monitor_size: Option<String>,
 }
 

@@ -1,8 +1,8 @@
 //! Emulated executor on Unicorn: routines (docs/05 5.3-5.5) and Linux processes
-//! with a modeled system-call interface and boundary monitors (docs/13).
+//! with a modeled system-call interface and boundary monitors (docs/12).
 //!
 //! One fresh engine instance per case: re-using an instance after rewriting
-//! code was observed to execute stale translated blocks (docs/devlog.md).
+//! code was observed to execute stale translated blocks.
 
 use crate::expr::{self, EvalCtx, Ty, ValEnv, Value};
 use crate::image::{DATA_BASE, Image, Monitor};

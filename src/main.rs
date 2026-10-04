@@ -314,7 +314,7 @@ fn inspect(p: &Path, b: &[u8]) -> serde_json::Value {
                         "target": format!("{}/elf/{}/linux", if isa == spec::Isa::X86_64 { "x86_64" } else { "aarch64" }, if isa == spec::Isa::X86_64 { "sysv-x86_64" } else { "aapcs64" }),
                         "entry": format!("0x{:x}", img.entry),
                         "segments": img.segments.iter().map(|s| json!({ "addr": format!("0x{:x}", s.addr), "file_bytes": s.data.len(), "mem_bytes": s.mem_size, "flags": s.label })).collect::<Vec<_>>(),
-                        "use": "as a process: target <isa>/elf/<abi>/linux with [entry] kind = \"elf_entry\" (docs/13)",
+                        "use": "as a process: target <isa>/elf/<abi>/linux with [entry] kind = \"elf_entry\" (docs/12)",
                     }),
                     Err(e) => {
                         let m = format!("{e:#}");

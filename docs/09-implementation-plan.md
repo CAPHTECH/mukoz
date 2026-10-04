@@ -1,232 +1,232 @@
-# 09 実装計画と検証
+# 09 Implementation plan and verification
 
-## 9.1 言語と方針
+## 9.1 Language and approach
 
-- 実装言語は **Rust**。理由は10章 ADR-07。
-- 小さなコアから始める。大きなマイクロサービス群や動的プラグインABIにしない。
-- ホストに依存するコードは `mukoz-platform` と worker の中に閉じ込める。Core はホストのOS・CPUに依存しない。
-- 最初の完了目標は **現環境 `linux-x86_64`(Debian 13)で P1〜P4 が通ること**。
+- The implementation language is **Rust**. The reason is ADR-07 in chapter 10.
+- Start from a small core. Do not build a large set of microservices or a dynamic plugin ABI.
+- Host-dependent code stays inside `mukoz-platform` and the workers. Core does not depend on the host OS or CPU.
+- The first completion target is **P1 through P4 passing on the current environment, `linux-x86_64` (Debian 13)**.
 
-## 9.2 リポジトリ構成(案)
+## 9.2 Repository layout (proposal)
 
 ```text
 mukoz/
   Cargo.toml                  # workspace
   crates/
-    mukoz-kernels/            # #![no_std]。bv演算・範囲検査など純粋な処理。Core と自己検査の両方が使う
-    mukoz-core/               # 型、式(構文解析・型検査・評価)、Contract/Binding/Suite、計画、採否
-    mukoz-artifact/           # スナップショット、raw/ELF/Mach-O/PE の検査、LoadPlan
-    mukoz-platform/           # ABI表・syscall adapter表(データ)、HostProbe、能力モデル
-    mukoz-store/              # content-addressed store、索引、射影
-    mukoz-proto/              # worker IPC(版付き)
-    mukoz-worker-emu/         # bin。Unicorn(FFIはここだけ)
-    mukoz-worker-native/      # bin。native-routine / native-process(OS別に cfg)
+    mukoz-kernels/            # #![no_std]. Pure operations such as bv arithmetic and range checks. Used by both Core and the self-check
+    mukoz-core/               # types, expressions (parsing, type checking, evaluation), Contract/Binding/Suite, plan, admission
+    mukoz-artifact/           # snapshot, raw/ELF/Mach-O/PE inspection, LoadPlan
+    mukoz-platform/           # ABI table and syscall adapter table (data), HostProbe, capability model
+    mukoz-store/              # content-addressed store, index, projection
+    mukoz-proto/              # worker IPC (versioned)
+    mukoz-worker-emu/         # bin. Unicorn (the only place with FFI)
+    mukoz-worker-native/      # bin. native-routine / native-process (cfg per OS)
     mukoz-cli/                # bin `mukoz`
   fixtures/
-    <name>/{src.s, <isa>.bin, manifest.toml}   # 元のアセンブリ、生成物、digest・ツールチェーン
+    <name>/{src.s, <isa>.bin, manifest.toml}   # original assembly, generated output, digest and toolchain
   conformance/
-    x86_64/ aarch64/          # エンジン適格試験(既知の答えを持つ命令試験)
+    x86_64/ aarch64/          # engine qualification (instruction tests with known answers)
   selfcheck/
-    contracts/ suites/ checkers.toml          # 自己検査用(9.6)
+    contracts/ suites/ checkers.toml          # for the self-check (9.6)
   schemas/
   tests/
   docs/
 ```
 
-## 9.3 依存候補
+## 9.3 Dependency candidates
 
-| 領域 | 候補 | 確認事項 |
+| Region | Candidate | Points to confirm |
 |---|---|---|
-| 形式の読取り | `object` | ELF/Mach-O/PE の読取りAPI。整合検査は自前 |
-| CPUエミュレーション | Unicorn 2 + Rust binding(`unicorn-engine`) | このホストでのビルド `[U]`(システムライブラリはない。同梱ソースをcmakeでビルドする方式を想定)、ライセンス(10章) |
-| 逆アセンブル | Capstone + `capstone` crate | 表示用。必須経路に入れない |
-| 構造化I/O | `serde`、`serde_json`、`toml` | 未知フィールド拒否、重複キー拒否、上限付きの読込み |
-| digest | `sha2` | 正規化JSONに対して計算 |
-| 乱数 | **自前の小さなPRNG**(例: SplitMix64) | 外部crateの版が変わると生成列が変わり得るため `[R]`。生成器の版を証跡に記録する |
-| Linuxのプロセス制御 | `rustix` 等 | memfd、execveat、cgroup、namespace |
-| Windows | `windows-sys` | 後段 |
+| Format reading | `object` | Reading API for ELF/Mach-O/PE. Consistency checks are written in-house |
+| CPU emulation | Unicorn 2 + Rust binding (`unicorn-engine`) | Build on this host `[U]` (there is no system library; the assumed approach is to build the bundled source with cmake), license (chapter 10) |
+| Disassembly | Capstone + `capstone` crate | For display. Not on the required path |
+| Structured I/O | `serde`, `serde_json`, `toml` | Reject unknown fields, reject duplicate keys, bounded reads |
+| digest | `sha2` | Computed over canonical JSON |
+| Random numbers | **A small in-house PRNG** (e.g., SplitMix64) | The generated sequence can change when an external crate's version changes `[R]`. Record the generator version in the evidence |
+| Linux process control | `rustix` etc. | memfd, execveat, cgroup, namespace |
+| Windows | `windows-sys` | Later |
 
-採用時に版(または commit)を固定し、`latest` に追従しない。
+When adopting a dependency, pin its version (or commit). Do not track `latest`.
 
-## 9.4 段階
+## 9.4 Stages
 
-**実行順序は 11章 11.5 に従う。** 下の P0〜P5 は作る機能のまとまりを示す。11章では P1 と P3 の一部(領域・ポインタ)を先に作り、`linux-x86_64` の Tier 1 受入(9.8)は比較試験(11.2)の後に置く。
+P0 through P5 below describe groupings of the features to build. Development built P1 and part of P3 (regions and pointers) first, and ran a comparison trial of the value hypothesis (agents with and without Mukoz) before the Tier 1 acceptance for `linux-x86_64` (§9.8).
 
-| 段階 | 作るもの | 完了条件(すべて `linux-x86_64` 上) |
+| Stage | What to build | Completion condition (all on `linux-x86_64`) |
 |---|---|---|
-| **P0 Core** | kernels、式言語、TOML/JSON読込み、Store、Assessor、プラットフォーム表、`platform probe`(ホスト情報のみ) | 式評価の既知値試験、未知フィールド拒否、STALE/UNKNOWN→HOLD、VACUOUS_SCOPE の試験が通る |
-| **P1-0 Spike** | Unicorn の Rust binding をビルドし、x86_64 の add64 を1件実行する捨てコード | ビルドと1件の実行ができる。できなければ10章の代替案を検討してから先へ進む |
-| **P1 x86_64 ルーチン** | emulated worker、x86_64 SysV ハーネス、sentinel、メモリ監視、計画・生成、`check`(`--artifact`・`--fail-fast`)、回帰ケース、診断情報(PCリングバッファ・値の食い違い・違反アクセス)、x86_64 適格試験、native-routine worker、差分試験 | 9.5 の最初の縦切りが通る |
-| **P2 aarch64 ルーチン** | aarch64 ハーネス(AAPCS64)、aarch64 適格試験 | add64 / sub変異 / nested call を**同じContract**で検査できる |
-| **P3 プロセス** | ELF Inspector、`linux-stdio/1`(x86_64・aarch64 adapter)、Linux native-process、Linuxの隔離能力 probe と試行区域、Mach-O Inspector、`darwin-stdio/1` | x86_64 ELF hello が emulated と native-process の両方で ACCEPT、変異が REJECT。Mach-O hello が emulated で検査でき、native は `HOST_CANNOT_EXECUTE_TARGET` で HOLD |
-| **P4 自己検査と仕上げ** | `replay`・`shrink`・`show` のページと `--disasm`(Capstone)、`regressions` コマンド、自己検査の段階1〜3(9.6) | 9.8 の受入基準を満たす → `linux-x86_64` を Tier 1 にする |
-| P5 他ホスト | macOS arm64 → Linux arm64 → Windows x86_64(PE、win64、API stubモデル) | ホストごとに Tier 2 → Tier 1 |
-| 後段 | JSON-RPC、故障注入スクリプト、有界検証 | 10章 |
+| **P0 Core** | kernels, expression language, TOML/JSON loading, Store, Assessor, platform table, `platform probe` (host information only) | Known-value tests for expression evaluation, unknown-field rejection, STALE/UNKNOWN→HOLD, and VACUOUS_SCOPE tests pass |
+| **P1-0 Spike** | Throwaway code that builds the Unicorn Rust binding and runs one x86_64 add64 | The build succeeds and one execution works. If not, consider the alternatives in chapter 10 before going further |
+| **P1 x86_64 routine** | emulated worker, x86_64 SysV harness, sentinel, memory monitor, planning and generation, `check` (`--artifact`, `--fail-fast`), regression cases, diagnostics (PC ring buffer, value mismatch, violating access), x86_64 engine qualification, native-routine worker, differential test | The first vertical slice in §9.5 passes |
+| **P2 aarch64 routine** | aarch64 harness (AAPCS64), aarch64 engine qualification | add64 / sub mutant / nested call can be checked with the **same Contract** |
+| **P3 process** | ELF Inspector, `linux-stdio/1` (x86_64 and aarch64 adapters), Linux native-process, Linux isolation capability probe and trial zone, Mach-O Inspector, `darwin-stdio/1` | The x86_64 ELF hello gets ACCEPT in both emulated and native-process, and the mutant gets REJECT. The Mach-O hello can be checked in emulated, and native gets HOLD with `HOST_CANNOT_EXECUTE_TARGET` |
+| **P4 self-check and finishing** | `replay`, `shrink`, `show` pages and `--disasm` (Capstone), the `regressions` command, self-check stages 1 to 3 (§9.6) | The acceptance criteria in §9.8 are met → `linux-x86_64` becomes Tier 1 |
+| P5 other hosts | macOS arm64 → Linux arm64 → Windows x86_64 (PE, win64, API stub model) | Tier 2 → Tier 1 per host |
+| Later | JSON-RPC, fault injection scripts, bounded verification | Chapter 10 |
 
-P1-0 を最初に置くのは、Unicorn のビルドと動作がこの計画で最大の不確実性だからである。
+P1-0 comes first because building and running Unicorn is the largest uncertainty in this plan.
 
-## 9.5 最初の縦切り
+## 9.5 First vertical slice
 
 ```text
 fixtures/add64 (x86_64: 48 8d 04 37 c3)
   + arith.add64 Contract
   + arith.add64@x86_64-sysv Binding
-  + 境界値直積 + random 4096
+  + boundary values Cartesian product + random 4096
         ↓
 mukoz check
         ↓
-正しい実装:        ACCEPT_WITHIN_SCOPE
-sub 変異:          REJECT + arith.add64/sum + 反例 + 診断情報
-                   → 反例が回帰ケースとして保存される
-sub 変異を再検査:  --fail-fast で回帰ケース reg-… が最初に失敗する
-正しい実装に戻す:  回帰ケースを含めて ACCEPT_WITHIN_SCOPE
-未対応命令を含む:  HOLD + UNSUPPORTED_DURING_RUN
-native-routine 可: 同じケースで emulated と一致
+Correct implementation:      ACCEPT_WITHIN_SCOPE
+sub mutant:                  REJECT + arith.add64/sum + counterexample + diagnostics
+                             → the counterexample is saved as a regression case
+Recheck the sub mutant:      with --fail-fast, regression case reg-… fails first
+Restore the correct impl.:   ACCEPT_WITHIN_SCOPE, including the regression case
+With unsupported instruction: HOLD + UNSUPPORTED_DURING_RUN
+native-routine available:    agrees with emulated on the same cases
         ↓
 mukoz show / mukoz replay
 ```
 
-この段階では ELF・Mach-O・プロセス・自己検査を同時に入れない。
+This stage does not include ELF, Mach-O, processes, or the self-check at the same time.
 
-## 9.6 自己検査
+## 9.6 Self-check
 
-Mukozの実行ファイル(Linuxでは x86_64 ELF)と、その部品を、Mukoz 自身で検査する。目的は**回帰とプラットフォーム差を捕まえる網**を持つことで、Mukozの正しさの証明ではない。
+Check Mukoz's executable (an x86_64 ELF on Linux) and its components with Mukoz itself. The purpose is to have a **net that catches regressions and platform differences**. It is not a proof of Mukoz's correctness.
 
-### 段階
+### Stages
 
-| 段階 | 検査するもの | Executor | 時期 |
+| Stage | What is checked | Executor | When |
 |---|---|---|---|
-| 1 | 答えが分かっている fixture 群・変異 fixture に対する Mukoz の判定(9.7) | 全部 | P0から |
-| 2 | `mukoz` CLI をプロセス境界の契約で検査(入力ファイルに対する stdout の JSON・終了コード) | native-process | P3以降 |
-| 3 | `mukoz-kernels` の関数を `extern "C"` の入口でルーチンとして検査。x86_64 と aarch64 の両方へビルドする | emulated、native-routine | P4 |
-| 4 | Rust標準ライブラリを使うプロセス全体のエミュレーション | — | 当面しない。Linux syscall の広いモデルが必要になるため |
+| 1 | Mukoz's verdicts on fixtures with known answers and on mutant fixtures (§9.7) | all | From P0 |
+| 2 | The `mukoz` CLI, checked with a contract at the process boundary (stdout JSON and exit code for an input file) | native-process | P3 onward |
+| 3 | `mukoz-kernels` functions, checked as routines through `extern "C"` entry points. Built for both x86_64 and aarch64 | emulated, native-routine | P4 |
+| 4 | Emulation of whole processes that use the Rust standard library | — | Not for now. It would need a broad Linux syscall model |
 
-### 段階3の対象と期待値の出どころ
+### Stage 3 subjects and the source of expected values
 
-循環を避けるため、層ごとに期待値の出どころを決める。
+To avoid circularity, decide the source of expected values per layer.
 
-| 層 | 例 | 期待値の出どころ |
+| Layer | Example | Source of expected values |
 |---|---|---|
-| 最下層: bv演算 | `mk_bv_add64`、比較、シフト、符号拡張 | 実CPUの命令結果(native-routine で同じ演算命令を実行)と、手で確定した値の表。Mukozの式評価器は使わない |
-| 中間層: 範囲検査 | `mk_range_contains(base, size, addr, width)`(メモリ監視の中核) | 式言語で書いた契約。式評価器は最下層の検査済み演算に依存する |
-| 上位層: 構造検査 | ELF header の検査関数(バッファを受け取る) | 手で作った正常・異常ヘッダの表 |
+| Bottom layer: bv arithmetic | `mk_bv_add64`, comparison, shift, sign extension | Instruction results on a real CPU (running the same arithmetic instruction in native-routine) and a table of values fixed by hand. Mukoz's expression evaluator is not used |
+| Middle layer: range checks | `mk_range_contains(base, size, addr, width)` (the core of the memory monitor) | A contract written in the expression language. The expression evaluator depends on the bottom-layer operations that have already been checked |
+| Upper layer: structure checks | The ELF header check function (takes a buffer) | A table of correct and malformed headers built by hand |
 
-- kernels は `#![no_std]`、`panic = "abort"`、メモリ確保なし、`#[no_mangle] extern "C"` で作る。
-- コンパイラが `memcpy`・`memset` 等の呼出しを挿入した場合、その関数は外部呼出しを含むので、ルーチン検査では `UNRESOLVED_DEPENDENCY` で HOLD になる。これを正しく検出することも試験項目にする。
-- 同じソースから作った判定器と対象を比べて見つかるのは、主にコンパイラ・最適化レベル・ISAによる差である。ロジックの誤りは、上の期待値の出どころで捕まえる。
+- kernels are built with `#![no_std]`, `panic = "abort"`, no memory allocation, and `#[no_mangle] extern "C"`.
+- If the compiler inserts calls such as `memcpy` or `memset`, the function contains external calls, so routine checking gives HOLD with `UNRESOLVED_DEPENDENCY`. Detecting this correctly is also a test item.
+- Comparing a checker and a subject built from the same source mainly finds differences due to the compiler, optimization level, and ISA. Logic errors are caught by the sources of expected values above.
 
-### 判定器の版
+### Checker versions
 
-- `selfcheck/checkers.toml` に、検査に使う前の版の `mukoz` 実行ファイルの digest を記録する。版 N の自己検査は、版 N-1 の判定器で行った結果を必須とし、版 N 自身での結果は `independence = self` として追加で記録する(06章 6.9)。
-- 最初の版(N-1 がない)は、段階1の既知答え試験と、最下層の実CPU照合だけを根拠にする。
+- `selfcheck/checkers.toml` records the digest of the previous version of the `mukoz` executable used for checking. The self-check of version N requires the result obtained with the version N-1 checker. The result from version N itself is recorded additionally as `independence = self` (chapter 06 §6.9).
+- The first version (which has no N-1) relies only on the known-answer tests of stage 1 and the bottom-layer comparison against a real CPU.
 
-## 9.7 Mukoz自身の試験
+## 9.7 Mukoz's own tests
 
-### fixture
+### fixtures
 
-| fixture | ISA | 確認すること |
+| fixture | ISA | What it confirms |
 |---|---|---|
-| add64 / sub64 | x86_64, aarch64 | 幅、算術、結果のBinding |
-| signed比較 / unsigned比較 | 両方 | 比較の符号を混同しない |
-| checked increment | 両方 | 入口ポインタの固定、状態更新、失敗系、frame |
-| bounded copy | 両方 | 領域、アクセス幅、境界、alias |
-| nested call | 両方 | 最初の `ret` で止まらない |
-| scratch stack / red zone | x86_64 | 正当な一時書込みを禁止作用と誤認しない |
-| callee-saved 破壊 | 両方 | ABI claim |
-| x18 一時使用 | aarch64 | `apple-arm64` では違反。`aapcs64`(Linux)での扱いは ABI 表の確認後に決める `[U]` |
-| hello ELF(libcなし) | x86_64 | 入口解決、仮想stdout、exit、native との一致 |
-| 等価な hello | x86_64 | 違う命令列・同じ出力を受け入れる |
-| hello Mach-O | aarch64 | `LC_MAIN`、`darwin-stdio/1` |
-| 壊れた ELF / Mach-O | — | header・command・segment の境界、整数overflow |
-| 動的リンクの ELF | x86_64 | `UNRESOLVED_DEPENDENCY` を機能違反にしない |
-| 未対応命令 | 両方 | NOP化・fallbackをしない |
-| 無限ループ | 両方 | 予算切れと停止性違反を区別 |
+| add64 / sub64 | x86_64, aarch64 | width, arithmetic, result Binding |
+| signed comparison / unsigned comparison | both | the comparison signedness is not confused |
+| checked increment | both | pinned entry pointer, state update, failure paths, frame |
+| bounded copy | both | region, access width, boundary, alias |
+| nested call | both | does not stop at the first `ret` |
+| scratch stack / red zone | x86_64 | a legitimate temporary write is not mistaken for a forbidden effect |
+| callee-saved clobber | both | ABI claim |
+| x18 temporary use | aarch64 | A violation under `apple-arm64`. Its handling under `aapcs64` (Linux) will be decided after the ABI table is confirmed `[U]` |
+| hello ELF (no libc) | x86_64 | entry resolution, virtual stdout, exit, agreement with native |
+| equivalent hello | x86_64 | accepts a different instruction sequence with the same output |
+| hello Mach-O | aarch64 | `LC_MAIN`, `darwin-stdio/1` |
+| broken ELF / Mach-O | — | header, command, and segment boundaries; integer overflow |
+| dynamically linked ELF | x86_64 | `UNRESOLVED_DEPENDENCY` is not treated as a functional violation |
+| unsupported instruction | both | no NOP replacement or fallback |
+| infinite loop | both | distinguishes budget exhaustion from a termination violation |
 
-各 fixture は、元のアセンブリ、生成物、digest、使ったツールチェーンの版を `manifest.toml` に持つ。
+Each fixture keeps its original assembly, generated output, digest, and toolchain version in `manifest.toml`.
 
-**fixture作成(2026-10-05 の状態):** aarch64 は Rust の `aarch64-unknown-linux-gnu` ターゲット(`global_asm`)と `llvm-objcopy` で作る(`fixtures/aarch64/build.py`)。Mach-O は手で組み立てる(`fixtures/process/mkmacho.py`)。下は本書作成時の記録。
+**Fixture creation (state as of 2026-10-05):** aarch64 fixtures are built with Rust's `aarch64-unknown-linux-gnu` target (`global_asm`) and `llvm-objcopy` (`fixtures/aarch64/build.py`). The Mach-O fixture is assembled by hand (`fixtures/process/mkmacho.py`). What follows is the record from when this document was written.
 
-**fixture作成の制約(本書作成時):**
+**Constraints on fixture creation (when this document was written):**
 
-- x86_64 は `as` / `ld` で作れる(helloは1回作って実行できた)。
-- aarch64 のアセンブラ・逆アセンブラがない。`binutils-aarch64-linux-gnu` の導入(apt、要確認)か、Rust の `aarch64-unknown-linux-gnu` ターゲットの追加が必要。どちらもしていない。
-- Mach-O の hello を作る Apple のツールチェーンはない。0.4 の `hello-arm64` を取り寄せるか、手で組み立てる必要がある(10章 未決事項)。
-- 0.4 に記録されていた `hello-arm64` の値(本書作成時には再確認していない。ファイルもこのディレクトリにない):
+- x86_64 can be built with `as` / `ld` (hello was built and run once).
+- There is no aarch64 assembler or disassembler. Either install `binutils-aarch64-linux-gnu` (apt, to be confirmed) or add Rust's `aarch64-unknown-linux-gnu` target. Neither has been done.
+- There is no Apple toolchain to build a Mach-O hello. Either obtain `hello-arm64` from 0.4 or assemble it by hand (chapter 10, open items).
+- Values recorded for `hello-arm64` in 0.4 (not rechecked when this document was written; the file is also not in this directory):
 
-  | 項目 | 署名前(0.4作成時に確認) | 署名後(ユーザー報告のみ) |
+  | Item | Before signing (confirmed when 0.4 was made) | After signing (user report only) |
   |---|---|---|
-  | サイズ | 16,384 bytes | — |
+  | Size | 16,384 bytes | — |
   | SHA-256 | `a10c4e12b5e8d1f62b649ed16d2384e04db7081b03b6e18dea2ce547d1c418cc` | `fe607f74d161462411391222959671488698f5b09952e9570f6ddbf8bac71e67` |
-  | header | ncmds = 6、sizeofcmds = 376 | ncmds = 7、sizeofcmds = 392 |
-  | 命令 | file offset `0x300`、32 bytes(8命令。writeの戻り値を確認しない) | — |
-  | メッセージ | file offset `0x320`、29 bytes(`Hello from raw ARM64 Mach-O!` + 改行と推定 `[R]`) | — |
+  | header | ncmds = 6, sizeofcmds = 376 | ncmds = 7, sizeofcmds = 392 |
+  | Instructions | file offset `0x300`, 32 bytes (8 instructions; does not check the return value of write) | — |
+  | Message | file offset `0x320`, 29 bytes (`Hello from raw ARM64 Mach-O!` plus a newline, inferred `[R]`) | — |
 
-  ARM Mac 上で起動して文字列が表示されたことは報告されているが、stdout のバイト列・終了状態を自動で取得した試験ではない。
+  It has been reported that the program was launched on an ARM Mac and the string was displayed, but this was not an automated test that captured the stdout bytes and exit status.
 
-### 変異
+### Mutations
 
-正常な fixture から意味の分かる変異を作り、**どの契約のどの性質に違反するか**を先に決める。
+Make mutations with a clear meaning from correct fixtures, and decide first **which property of which contract each one violates**.
 
 ```text
-add → sub、64bit → 32bit、signed分岐 → unsigned分岐
-許可範囲外へ1byte書く、対象外へ書いてから戻す
-callee-saved を壊す、予約レジスタを一時利用して戻す
-不正な復帰先へ戻る、stdout の長さを1byte増減
-write の失敗を無視する(full-success環境では反例にならない。故障注入付きの別suiteで調べる)
-入口や load command を壊す、不要な外部作用を試みる
+add → sub, 64-bit → 32-bit, signed branch → unsigned branch
+write 1 byte outside the permitted range, write outside the target and then restore it
+clobber callee-saved, use a reserved register temporarily and restore it
+return to an invalid return address, change the stdout length by 1 byte
+ignore a write failure (not a counterexample in a full-success environment; examine it in a separate suite with fault injection)
+break the entry or a load command, attempt an unneeded external effect
 ```
 
-### 判定器の負の試験
+### Negative tests for the checker
 
-| 対象 | 試験 |
+| Subject | Test |
 |---|---|
-| Artifact | inspect後の変更、署名による変更、同名の別ファイル |
-| Binding | 入口のずれ、結果レジスタのずれ、幅の誤り、古いdigest |
-| Plan | ケース0件、全ケースが事前条件外、必須claimの迂回、予算不足 |
-| Assessor | UNKNOWN→PASS への誤変換、後続障害による反例の消失、古い REJECT |
-| Platform | 適格記録のないホストの emulated 結果、HOST_CANNOT_EXECUTE_TARGET、Executor間の自動fallback |
-| Evidence | trace欠落、射影の省略、replay対象の変更、書込み途中のクラッシュ |
-| Engine | 前ケースからのレジスタ・メモリ・作用・キャッシュの漏れ |
-| CLI | 未知フィールド、過大入力、`--gate` の有無による終了コード、`--artifact` も `[artifact]` もない場合 |
-| 回帰ケース | 契約変更で古い集合が「当てはまらない」になる、Binding変更で当てはめられないケースが NOT_EVALUATED になる、上限超過で計画を拒否する、`include = false` が limitations に出る |
-| fail-fast | 反例後に打ち切った run が ACCEPT にならない、未実行数が出る |
-| 試行区域 | 隔離能力が1つ欠けたら `NATIVE_NOT_PERMITTED`、emulated へ切り替えない、シンボリックリンクで区域外を指すファイルを拒否する |
-| 診断情報 | Capstone がなくても採否が変わらない、診断の上限超過で判定が変わらない |
-| Security | 対象の出力による偽PASS、パス操作、ログ増幅 |
+| Artifact | change after inspect, change by signing, a different file with the same name |
+| Binding | entry offset shift, result register shift, wrong width, stale digest |
+| Plan | zero cases, all cases outside the precondition, bypassing a required claim, insufficient budget |
+| Assessor | wrong conversion of UNKNOWN→PASS, a counterexample lost due to a later failure, a stale REJECT |
+| Platform | an emulated result on a host without a qualification record, HOST_CANNOT_EXECUTE_TARGET, automatic fallback between Executors |
+| Evidence | missing trace, omitted projection, change to the replay target, crash during a write |
+| Engine | leakage of registers, memory, effects, or cache from the previous case |
+| CLI | unknown fields, oversized input, exit code with and without `--gate`, neither `--artifact` nor `[artifact]` present |
+| Regression case | an old set becomes "not applicable" after a contract change, a case that cannot be applied after a Binding change becomes NOT_EVALUATED, the plan is rejected when the limit is exceeded, `include = false` appears in limitations |
+| fail-fast | a run cut off after a counterexample does not become ACCEPT, the number of unexecuted cases is shown |
+| Trial zone | if one isolation capability is missing, `NATIVE_NOT_PERMITTED`; no switch to emulated; a file pointing outside the zone through a symbolic link is rejected |
+| Diagnostics | admission does not change without Capstone, verdict does not change when the diagnostics limit is exceeded |
+| Security | false PASS through the subject's output, path manipulation, log amplification |
 
-## 9.8 受入基準(`linux-x86_64` を Tier 1 にする条件)
+## 9.8 Acceptance criteria (conditions for making `linux-x86_64` Tier 1)
 
-これは将来満たす基準であり、現在の測定値ではない。
+These are criteria to be met in the future, not current measured values.
 
-1. 9.7 の正常 fixture が、対応する Executor とケース集合で ACCEPT_WITHIN_SCOPE になる。
-2. 対応範囲内の変異を、予告した性質IDで REJECT し、反例を replay できる。
-3. ファイル・署名・契約の変更で、古い採否が流用されない。
-4. 未対応・0件・時間切れ・欠測を成功にする経路がない(負の試験で確認)。
-5. 同じ subject context・同じ execution platform でのケース再実行が同じ結果になる。異なれば理由を記録する。
-6. native-process の結果に、観測していないメモリ・通信の保証を付けない。
-7. AIエージェントが要約から finding・反例・必要なtraceへ段階的にたどれる。
-8. x86_64 で emulated と native-routine の差分試験が、適格試験の範囲で一致する。
-9. 自己検査の段階1〜3が通り、`independence` が正しく記録される。
-10. **生成ループの試験:** AIエージェントが、Mukozの CLI 出力だけを手がかりに(Mukozの内部ファイルや fixture の正解を読まずに)、変異 fixture を直して REJECT から ACCEPT_WITHIN_SCOPE まで到達できる。到達までの反復回数と、途中で回帰ケースが再発を捕まえた回数を記録する。
+1. The correct fixtures in §9.7 get ACCEPT_WITHIN_SCOPE with the corresponding Executor and case set.
+2. Mutants within the supported scope are REJECTed with the announced property ID, and the counterexample can be replayed.
+3. A change to the file, signature, or contract does not allow an old admission to be reused.
+4. There is no path that turns unsupported, zero cases, timeout, or missing measurement into success (confirmed by negative tests).
+5. Rerunning cases with the same subject context and the same execution platform gives the same result. If they differ, the reason is recorded.
+6. No guarantee about memory or communication that was not observed is attached to a native-process result.
+7. An AI agent can step from the summary down to the finding, the counterexample, and the needed trace.
+8. The differential test between emulated and native-routine on x86_64 agrees within the scope of engine qualification.
+9. Self-check stages 1 to 3 pass, and `independence` is recorded correctly.
+10. **Generation loop test:** an AI agent, using only Mukoz's CLI output as a clue (without reading Mukoz's internal files or the fixtures' correct answers), can fix a mutant fixture and get from REJECT to ACCEPT_WITHIN_SCOPE. Record the number of iterations to get there and the number of times a regression case caught a recurrence along the way.
 
-「誤った受理ゼロ」は fixture 群の中での目標であり、未知のバイナリ全般についての保証ではない。
+"Zero false acceptances" is a goal within the fixture set. It is not a guarantee about unknown binaries in general.
 
-**達成状況(2026-10-05、作業ホスト `linux-x86_64`、各1回):** `tools/tier1.py` が基準ごとに決める試験と run を回し、`target/tier1-report.json` に書く。
+**Achievement status (2026-10-05, working host `linux-x86_64`, once each):** `tools/tier1.py` runs the tests and runs decided per criterion and writes `target/tier1-report.json`.
 
-| 基準 | 根拠 | 結果 |
+| Criterion | Basis | Result |
 |---|---|---|
-| 1・2 | `tests/acceptance.rs`・`tests/coverage.rs`(両 ISA の fixture 表)・`tests/native.rs`・`tests/macho.rs`、shrink → replay | 通過 |
-| 3 | `tests/negative.rs`: artifact・同名の別ファイル・契約・Binding・Suite の変更で subject context が変わり、古い回帰集合は「当てはまらない」と数える | 通過 |
-| 4 | I1 系の試験、0件・時間切れ・停止しない native・壊れた証跡・上限超過・Capstone なしのビルドで採否が同じ | 通過 |
-| 5 | 同じ subject の再実行で採否・claim・反例の入力と観測が同じ(違うのは run / 反例の ID だけ)、反例の単独 replay が一括実行と同じ観測、回帰ケースの ID と seed が実行をまたいで同じ | 通過 |
-| 6 | native-process だけの run で memory・effects が NOT_EVALUATED | 通過 |
-| 7 | `tests/navigation.rs` | 通過 |
-| 8 | add64 の差分試験 4160 件一致・cpuid の食い違いを検出、適格試験(x86_64 45 試験 533 ベクトル、実CPUでも照合) | 通過 |
-| 9 | `selfcheck/run.py`: 段階1(cargo test)・段階2(静的 mukoz CLI を native-process で11行の表)・段階3(kernels 7 関数 × 2 ISA、x86_64 は native-routine と差分)。`independence = self`(前の版の判定器がない)なので段階2・3は HOLD `SELF_CHECK_ONLY` で、claim はすべて満たした | 通過(HOLD は設計どおり) |
-| 10 | `selfcheck/genloop/2026-10-05/`: 別エージェントが CLI 出力だけで todo の6欠陥を直し、8回の check で REJECT → ACCEPT。回帰ケースが再発を捕まえた回数は 0(再発が起きなかった) | 記録 |
+| 1, 2 | `tests/acceptance.rs`, `tests/coverage.rs` (fixture tables for both ISAs), `tests/native.rs`, `tests/macho.rs`, shrink → replay | Passed |
+| 3 | `tests/negative.rs`: a change to the artifact, a different file with the same name, the contract, the Binding, or the Suite changes the subject context, and the old regression set is counted as "not applicable" | Passed |
+| 4 | I1-series tests; admission is the same for zero cases, timeout, a native process that does not stop, broken evidence, limit exceeded, and a build without Capstone | Passed |
+| 5 | Rerunning the same subject gives the same admission, claims, and counterexample inputs and observations (only the run / counterexample IDs differ); a standalone replay of a counterexample gives the same observations as the batch run; regression case IDs and seeds are the same across runs | Passed |
+| 6 | In a run with native-process only, memory and effects are NOT_EVALUATED | Passed |
+| 7 | `tests/navigation.rs` | Passed |
+| 8 | 4160 add64 differential test cases agree, a cpuid mismatch is detected, engine qualification (x86_64: 45 tests, 533 vectors, also compared against a real CPU) | Passed |
+| 9 | `selfcheck/run.py`: stage 1 (cargo test), stage 2 (static mukoz CLI under native-process, a table of 11 rows), stage 3 (7 kernels functions × 2 ISAs, x86_64 compared with native-routine). Because `independence = self` (there is no previous-version checker), stages 2 and 3 are HOLD `SELF_CHECK_ONLY`, and all claims were satisfied | Passed (HOLD is by design) |
+| 10 | `selfcheck/genloop/2026-10-05/`: a separate agent fixed the 6 defects in todo using only CLI output, going from REJECT to ACCEPT in 8 checks. The number of times a regression case caught a recurrence is 0 (no recurrence happened) | Recorded |
 
-未確認・未達: 継続実行(CI)は未設定。段階2・3の `previous_version` での実行は、前の版の判定器が存在しないため未実施(`selfcheck/checkers.toml` は空)。生成ループ試験は1回・1課題だけ。
+Unverified or not met: continuous execution (CI) is not set up. Runs of stages 2 and 3 with `previous_version` have not been done because no previous-version checker exists (`selfcheck/checkers.toml` is empty). The generation loop test was run once, on one task.
 
-## 9.9 測定
+## 9.9 Measurement
 
-既知の不具合の検出率、正しい fixture の誤拒否、検査不能率、反例の再現率、診断までの操作数、返却byte数、CPU時間、最大メモリ、AIの修正までの反復回数を測る。未対応で除外した変異は件数と理由を併記する。性能目標の数値は最初の基準測定の後に決める。
+Measure the detection rate for known defects, false rejection of correct fixtures, the uncheckable rate, the counterexample reproduction rate, the number of operations to reach a diagnosis, the number of bytes returned, CPU time, peak memory, and the number of AI iterations to a fix. For mutants excluded as unsupported, state the count and the reason. Performance target values will be decided after the first baseline measurement.

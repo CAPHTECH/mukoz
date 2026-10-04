@@ -2,7 +2,7 @@
 """Check the linux-x86_64 Tier 1 acceptance criteria (docs/09 9.8) on this host and write
 target/tier1-report.json. Each criterion names the tests or runs that decide it; a criterion
 passes only if every one of them ran and passed on this run. Item 10 (the generation-loop trial)
-is a recorded experiment (docs/devlog), not rerun here: it is reported as `recorded`."""
+is a recorded experiment (selfcheck/genloop/), not rerun here: it is reported as `recorded`."""
 import json, os, re, subprocess, sys, hashlib, platform
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -60,7 +60,7 @@ s = subprocess.run([sys.executable, "selfcheck/run.py"], capture_output=True, te
 sc = json.load(open("selfcheck/last-run.json"))
 report["criteria"]["9 self-check run"] = {"pass": s.returncode == 0, "stages": {k: v["ok"] for k, v in sc["stages"].items()},
                                           "independence": sorted({x.get("independence") for x in sc["stages"]["3"]["suites"] if x.get("independence")} | {sc["stages"]["2"]["independence"]})}
-report["criteria"]["10 generation loop"] = {"pass": None, "status": "recorded", "record": "docs/devlog (generation-loop trial)"}
+report["criteria"]["10 generation loop"] = {"pass": None, "status": "recorded", "record": "selfcheck/genloop/2026-10-05"}
 
 json.dump(report, open("target/tier1-report.json", "w"), indent=1)
 ok = True
