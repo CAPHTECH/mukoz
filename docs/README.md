@@ -39,6 +39,7 @@ Mukozは、実行成果物(バイナリ、または入口を明示した機械�
 9. [09 実装計画と検証](09-implementation-plan.md)
 10. [10 設計判断・未決事項・参考資料](10-decisions.md)
 11. [11 開発の進め方](11-development-process.md) — ゴール、最初の探索目標、品質契約、工程
+12. [12 エージェント向けの使い方](12-agent-guide.md) — 生成・修正のループ、REJECT / HOLD の読み方、契約・Suite の書き方
 
 ## 表記
 
