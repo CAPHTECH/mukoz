@@ -305,3 +305,33 @@ fn a_misplaced_binding_is_never_accepted() {
         assert_eq!(got, want, "{from} -> {to}");
     }
 }
+
+/// Regression cases keep their stored id and filler seed: the same case is followed across runs,
+/// and every violated property has an inline finding.
+#[test]
+fn regression_cases_are_stable_across_runs() {
+    let store = tempdir("store");
+    let suite = root().join("examples/add64/suite.x86_64.toml");
+    let first = check(&suite, &store, &["--artifact", &fx("add64_mut_32bit")]);
+    let ids = |v: &Value| {
+        let mut x: Vec<String> = v["data"]["findings"].as_array().unwrap().iter().map(|f| f["case_id"].as_str().unwrap().to_string()).collect();
+        x.sort();
+        x
+    };
+    let second = check(&suite, &store, &["--artifact", &fx("add64_mut_32bit")]);
+    let third = check(&suite, &store, &["--artifact", &fx("add64_mut_32bit")]);
+    assert!(ids(&second).iter().all(|i| i.starts_with("reg-")), "{:?}", ids(&second));
+    assert_eq!(ids(&second), ids(&third));
+    // The case run as reg-<stem> uses the filler seed stored in <stem>.json.
+    let mut files = Vec::new();
+    files_under(&store.join("regressions"), &mut files);
+    for cx in second["data"]["claims"].as_array().unwrap().iter().flat_map(|c| c["counterexamples"].as_array().cloned().unwrap_or_default()) {
+        let item: Value = serde_json::from_slice(&std::fs::read(store.join("items").join(format!("{}.json", cx.as_str().unwrap()))).unwrap()).unwrap();
+        let stem = item["case"]["id"].as_str().unwrap().strip_prefix("reg-").unwrap().to_string();
+        let f = files.iter().find(|p| p.file_stem().unwrap().to_str().unwrap() == stem).expect("stored case");
+        let stored: Value = serde_json::from_slice(&std::fs::read(f).unwrap()).unwrap();
+        assert_eq!(item["case"]["filler_seed"], stored["filler_seed"], "{stem}");
+    }
+    let violated = first["data"]["claims"].as_array().unwrap().iter().filter(|c| c["evaluation"] == "VIOLATED").count();
+    assert_eq!(first["data"]["findings"].as_array().unwrap().len(), violated);
+}

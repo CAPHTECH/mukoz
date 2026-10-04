@@ -1,2 +1,2 @@
 # rustc 1.97.1 (8bab26f4f 2026-07-14); RUSTFLAGS=-C target-feature=+crt-static
-bin/mukoz-static 18971072 e26b5cdf257921dc9f6423bbb2acd016d77538cc9c150e3526096f3c63b0210d
+bin/mukoz-static 18973704 4ef1c8dab96e4c2928d820d7dfe3a35bfcd7e3b3c0b6a3a925bac286756d57f6

@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 
 pub const EVALUATOR_VERSION: &str = concat!("mukoz ", env!("CARGO_PKG_VERSION"));
 const MAX_ARTIFACT: u64 = 64 << 20;
-const INLINE_FINDINGS: usize = 3;
 const CX_PER_PROPERTY: usize = 3;
 const NATIVE_TIMEOUT_LIMIT: usize = 3;
 
@@ -402,7 +401,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
         );
     }
     let reg_ids: Vec<String> = regs.iter().map(|(id, _)| id.clone()).collect();
-    let generated = plan::generate(&l.contract, &l.suite, regs.into_iter().map(|(_, c)| c).collect(), reg_na)?;
+    let generated = plan::generate(&l.contract, &l.suite, regs.into_iter().map(|(id, c)| Case { id, ..c }).collect(), reg_na)?;
     o.store.put_object(&l.artifact)?;
     let context = subject_context(&l);
     let started = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
@@ -601,7 +600,9 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
                 Err(e) => return Err(e),
             }
             s.counterexamples.push(cx_id);
-            if findings.len() < INLINE_FINDINGS && !findings.iter().any(|f: &serde_json::Value| f["property"] == json!(s.property)) {
+            // One inline finding per violated property (each property's first counterexample);
+            // the rest are reached through the claim's counterexample ids.
+            if !findings.iter().any(|f: &serde_json::Value| f["property"] == json!(s.property)) {
                 findings.push(finding);
             }
         }

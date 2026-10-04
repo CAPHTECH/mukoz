@@ -394,7 +394,9 @@ pub fn generate(contract: &Contract, suite: &Suite, regressions: Vec<Case>, regr
     let mut seen = std::collections::HashSet::new();
     let empty = BTreeMap::new();
 
-    let mut accept = |env: ValEnv, origin: Origin, rng: &mut SplitMix64, stats: &mut PlanStats, cases: &mut Vec<Case>| {
+    // `stored`: a regression case keeps its stored id and filler seed (docs/04 4.8), so it is the
+    // same execution as the counterexample it came from and can be followed across runs.
+    let mut accept_case = |env: ValEnv, origin: Origin, stored: Option<(String, u64)>, rng: &mut SplitMix64, stats: &mut PlanStats, cases: &mut Vec<Case>| {
         for r in &contract.requires {
             match expr::eval(&r.expr, &EvalCtx { vars: &env, region_addrs: &empty }) {
                 Ok(Value::Bool(true)) => {}
@@ -422,12 +424,17 @@ pub fn generate(contract: &Contract, suite: &Suite, regressions: Vec<Case>, regr
             Origin::Boundary => stats.boundary_cases += 1,
             Origin::Random => stats.random_cases += 1,
         }
-        cases.push(Case { id: format!("{prefix}-{n:05}"), origin, values: env, filler_seed: rng.next() });
+        let (id, filler_seed) = match stored {
+            Some((id, seed)) => (format!("{prefix}-{id}"), seed),
+            None => (format!("{prefix}-{n:05}"), rng.next()),
+        };
+        cases.push(Case { id, origin, values: env, filler_seed });
     };
 
     for r in regressions {
-        accept(r.values, Origin::Regression, &mut rng, &mut stats, &mut cases);
+        accept_case(r.values, Origin::Regression, Some((r.id, r.filler_seed)), &mut rng, &mut stats, &mut cases);
     }
+    let mut accept = |env: ValEnv, origin: Origin, rng: &mut SplitMix64, stats: &mut PlanStats, cases: &mut Vec<Case>| accept_case(env, origin, None, rng, stats, cases);
 
     if suite.boundary_product && !slots.is_empty() {
         // Cartesian product of per-variable candidates, built left to right so
