@@ -300,9 +300,10 @@ def judge_a64(task, binary, cases, seed):
         try:
             r = a64.call(code, bufs, args, rng)
         except a64.Fault as e:
-            fails.append((i, f"{e.kind}: {e}")); continue
-        msg = "callee-saved register or sp changed" if not r["saved"] else check(r)
-        if msg: fails.append((i, msg))
+            fails.append((i, f"{e.kind}: {e}"))
+        else:
+            msg = "callee-saved register or sp changed" if not r["saved"] else check(r)
+            if msg: fails.append((i, msg))
         if len(fails) >= 20:
             # The verdict is decided; the pure-Python interpreter is too slow to run the rest
             # (a looping submission costs 2M steps per case). `failed` is then a lower bound.

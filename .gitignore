@@ -5,3 +5,5 @@
 /eval/reference/bin/
 /eval/todo/bin/
 /eval/todo/launch
+__pycache__/
+/eval/todo2/bin/
