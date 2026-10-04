@@ -8,3 +8,5 @@
 __pycache__/
 /eval/todo2/bin/
 /eval/todo_mod/bin/
+/selfcheck/stage2/bin/mukoz-static
+/selfcheck/last-run.json

@@ -1,0 +1,3 @@
+# rustc 1.97.1 (8bab26f4f 2026-07-14); flags: --edition 2024 -C opt-level=2 -C panic=abort -C relocation-model=pic
+obj/kernels_x86_64.o 2632 10b158033555a74383f142ad65208a4708316628484ab2eed91e69c0b407cae9
+obj/kernels_aarch64.o 2896 36d3796bec26c7f48ecc182900f6cf1fa47e7133ec3203ac72552f652b5fafe2

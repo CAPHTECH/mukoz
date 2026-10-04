@@ -1,0 +1,20 @@
+schema = "mukoz.binding/1"
+id = "selfcheck.range_contains@x86_64"
+contract = "selfcheck.range_contains"
+target = "x86_64/elf/sysv-x86_64/none"
+
+[entry]
+kind = "object_symbol"
+symbol = "mk_range_contains"
+
+[arguments]
+rdi = "input.base"
+rsi = "input.size"
+rdx = "input.base + input.off"
+rcx = "input.width"
+
+[results]
+inside = "rax"
+
+[completion]
+kind = "return_to_sentinel"

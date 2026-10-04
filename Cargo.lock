@@ -159,12 +159,17 @@ dependencies = [
  "anyhow",
  "capstone",
  "libc",
+ "mukoz-kernels",
  "serde",
  "serde_json",
  "sha2",
  "toml",
  "unicorn-engine",
 ]
+
+[[package]]
+name = "mukoz-kernels"
+version = "0.1.0"
 
 [[package]]
 name = "pkg-config"

@@ -1,0 +1,10 @@
+schema = "mukoz.checkers/1"
+
+# The previous version's mukoz executables (N-1) accepted as checkers of this version's
+# self-check (docs/09 9.6). Results from any other checker are recorded as `self`.
+#
+# 0.1.0 is the first self-checking version: there is no N-1 checker that can run these suites
+# (object_symbol entries and native-process did not exist before), so this list is empty and the
+# self-check results are `self`. Per docs/09 9.6 the basis for this version is stage 1 (known
+# answers) and the bottom layer checked against the real CPU (stage 3, native-routine).
+previous = []

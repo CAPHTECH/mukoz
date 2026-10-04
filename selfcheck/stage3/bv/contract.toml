@@ -1,0 +1,28 @@
+schema = "mukoz.contract/1"
+id = "selfcheck.kat2"
+boundary = "routine"
+
+# One row of a known-answer table: a, b, expected (u64 each, little-endian). The rows come from
+# selfcheck/stage3/build.py; the only expression used on the result is `==`.
+[inputs]
+row = { type = "bytes", max_len = 24 }
+a = "bv64"
+b = "bv64"
+expected = "bv64"
+
+[results]
+value = "bv64"
+
+[[requires]]
+id = "row_from_table"
+expr = "len(input.row) == bv64(24) and input.a == u64le(input.row, bv64(0)) and input.b == u64le(input.row, bv64(8)) and input.expected == u64le(input.row, bv64(16))"
+
+[[ensures]]
+id = "known_answer"
+expr = "result.value == input.expected"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

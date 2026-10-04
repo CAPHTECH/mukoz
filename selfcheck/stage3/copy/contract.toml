@@ -1,0 +1,24 @@
+schema = "mukoz.contract/1"
+id = "selfcheck.copy_bytes"
+boundary = "routine"
+modifies = ["dst"]
+
+[inputs]
+src = { type = "bytes", max_len = 64 }
+
+[state]
+dst = { type = "bytes", max_len = 64 }
+
+[[requires]]
+id = "same_len"
+expr = "len(before.dst) == len(input.src)"
+
+[[ensures]]
+id = "copied"
+expr = "after.dst == input.src"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

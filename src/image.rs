@@ -145,20 +145,7 @@ impl Image {
         let u16_at = |o: usize| -> Result<u64> { Ok(u16::from_le_bytes(bytes.get(o..o + 2).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF truncated"))?.try_into()?) as u64) };
         let u32_at = |o: usize| -> Result<u64> { Ok(u32::from_le_bytes(bytes.get(o..o + 4).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF truncated"))?.try_into()?) as u64) };
         let u64_at = |o: usize| -> Result<u64> { Ok(u64::from_le_bytes(bytes.get(o..o + 8).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF truncated"))?.try_into()?)) };
-        if bytes.get(..4) != Some(b"\x7fELF") {
-            bail!("FORMAT_MISMATCH: not an ELF file");
-        }
-        if bytes[4] != 2 || bytes[5] != 1 {
-            bail!("UNSUPPORTED_FEATURE: only 64-bit little-endian ELF");
-        }
-        let machine = u16_at(18)?;
-        let want = match isa {
-            Isa::X86_64 => 62,
-            Isa::Aarch64 => 183,
-        };
-        if machine != want {
-            bail!("FORMAT_MISMATCH: ELF e_machine {machine} does not match the target ISA");
-        }
+        elf_header_check(bytes, isa)?;
         let entry = u64_at(24)?;
         let phoff = u64_at(32)? as usize;
         let phentsize = u16_at(54)? as usize;
@@ -227,7 +214,47 @@ impl Image {
     }
 }
 
+/// The ELF header test shared with self-check stage 3 (`mk_elf_header_check`), with Mukoz's
+/// error codes.
+fn elf_header_check(bytes: &[u8], isa: Isa) -> Result<()> {
+    use mukoz_kernels::elf;
+    let want: u64 = match isa {
+        Isa::X86_64 => 62,
+        Isa::Aarch64 => 183,
+    };
+    // Safety: the kernel reads only bytes[..len].
+    let code = unsafe { mukoz_kernels::mk_elf_header_check(bytes.as_ptr(), bytes.len() as u64, want) };
+    match code {
+        elf::OK => Ok(()),
+        elf::SHORT => bail!("FORMAT_MISMATCH: ELF truncated (header needs 64 bytes)"),
+        elf::MAGIC => bail!("FORMAT_MISMATCH: not an ELF file"),
+        elf::CLASS | elf::DATA => bail!("UNSUPPORTED_FEATURE: only 64-bit little-endian ELF"),
+        elf::TYPE => bail!("UNSUPPORTED_FEATURE: ELF type {} (only executables)", u16::from_le_bytes([bytes[16], bytes[17]])),
+        elf::MACHINE => bail!("FORMAT_MISMATCH: ELF e_machine {} does not match the target ISA", u16::from_le_bytes([bytes[18], bytes[19]])),
+        elf::PHENTSIZE => bail!("FORMAT_MISMATCH: ELF e_phentsize is smaller than a 64-bit program header"),
+        _ => bail!("FORMAT_MISMATCH: ELF program header table lies outside the file"),
+    }
+}
+
 impl Image {
+    /// An ELF executable that only the host kernel will load (native-process alone): static
+    /// executables including static-pie and TLS are accepted; a program interpreter is not (the
+    /// sandbox holds no dynamic loader). The image has no segments: it is never emulated.
+    pub fn elf_for_native(bytes: &[u8], isa: Isa) -> Result<Image> {
+        elf_header_check(bytes, isa)?;
+        let u16_at = |o: usize| u16::from_le_bytes([bytes[o], bytes[o + 1]]) as usize;
+        let phoff = u64::from_le_bytes(bytes[32..40].try_into()?) as usize;
+        let (phentsize, phnum) = (u16_at(54), u16_at(56));
+        for i in 0..phnum {
+            let o = phoff + i * phentsize;
+            if u32::from_le_bytes(bytes[o..o + 4].try_into()?) == 3 {
+                bail!("UNRESOLVED_DEPENDENCY: the executable needs a program interpreter (dynamic loader); the native-process sandbox provides none: link it statically");
+            }
+        }
+        let entry = u64::from_le_bytes(bytes[24..32].try_into()?);
+        Ok(Image { segments: Vec::new(), entry, code_ranges: Vec::new(), modules: vec![Module { name: String::new(), base: 0, size: u64::MAX >> 1 }], monitors: Vec::new(), parts: Vec::new(), main_call: false })
+    }
+
     /// 64-bit Mach-O MH_EXECUTE, loaded at its own addresses (no slide). LC_MAIN or
     /// LC_UNIXTHREAD give the entry. Imports (LC_LOAD_DYLIB, chained-fixup imports) are
     /// UNRESOLVED_DEPENDENCY: dyld is not modeled, so the program must not need it.
@@ -350,6 +377,112 @@ impl Image {
             bail!("FORMAT_MISMATCH: Mach-O entry 0x{entry:x} is not in an executable segment");
         }
         Ok(Image { segments, entry, code_ranges, modules: vec![Module { name: String::new(), base: 0, size: u64::MAX >> 1 }], monitors: Vec::new(), parts: Vec::new(), main_call })
+    }
+}
+
+impl Image {
+    /// One function of an ELF64 relocatable object (ET_REL), placed at the code base as a
+    /// routine. Any relocation inside the function (a call to `memcpy`, a reference to read-only
+    /// data, ...) is UNRESOLVED_DEPENDENCY: Mukoz does not link.
+    pub fn elf_object(bytes: &[u8], isa: Isa, symbol: &str) -> Result<Image> {
+        let get = |o: usize, n: usize| -> Result<&[u8]> { o.checked_add(n).and_then(|e| bytes.get(o..e)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: ELF object truncated at 0x{o:x}")) };
+        let u16_at = |o: usize| -> Result<u64> { Ok(u16::from_le_bytes(get(o, 2)?.try_into()?) as u64) };
+        let u32_at = |o: usize| -> Result<u64> { Ok(u32::from_le_bytes(get(o, 4)?.try_into()?) as u64) };
+        let u64_at = |o: usize| -> Result<u64> { Ok(u64::from_le_bytes(get(o, 8)?.try_into()?)) };
+        if bytes.get(..4) != Some(b"\x7fELF") {
+            bail!("FORMAT_MISMATCH: not an ELF file");
+        }
+        if get(4, 2)? != [2, 1] {
+            bail!("UNSUPPORTED_FEATURE: only 64-bit little-endian ELF");
+        }
+        if u16_at(16)? != 1 {
+            bail!("FORMAT_MISMATCH: entry kind `object_symbol` needs a relocatable object (ET_REL)");
+        }
+        let want = match isa {
+            Isa::X86_64 => 62,
+            Isa::Aarch64 => 183,
+        };
+        if u16_at(18)? != want {
+            bail!("FORMAT_MISMATCH: ELF e_machine {} does not match the target ISA", u16_at(18)?);
+        }
+        let shoff = u64_at(40)? as usize;
+        let shentsize = u16_at(58)? as usize;
+        let shnum = u16_at(60)? as usize;
+        if shentsize < 64 {
+            bail!("FORMAT_MISMATCH: e_shentsize {shentsize}");
+        }
+        let sh = |i: usize| -> Result<(u64, u64, usize, usize, u64, u64)> {
+            let o = i.checked_mul(shentsize).and_then(|x| x.checked_add(shoff)).ok_or_else(|| anyhow!("FORMAT_MISMATCH: section header {i} overflows"))?;
+            // (type, flags, offset, size, link, info)
+            Ok((u32_at(o + 4)?, u64_at(o + 8)?, u64_at(o + 24)? as usize, u64_at(o + 32)? as usize, u32_at(o + 40)?, u32_at(o + 44)?))
+        };
+        let cstr = |o: usize| -> Result<String> {
+            let tail = bytes.get(o..).ok_or_else(|| anyhow!("FORMAT_MISMATCH: string offset 0x{o:x} outside the file"))?;
+            let n = tail.iter().position(|b| *b == 0).ok_or_else(|| anyhow!("FORMAT_MISMATCH: unterminated string"))?;
+            Ok(String::from_utf8_lossy(&tail[..n]).into_owned())
+        };
+        let (symtab, strtab) = (0..shnum)
+            .find_map(|i| sh(i).ok().filter(|h| h.0 == 2).map(|h| (h, h.4 as usize)))
+            .ok_or_else(|| anyhow!("FORMAT_MISMATCH: no symbol table"))?;
+        let str_off = sh(strtab)?.2;
+        let mut found = None;
+        let mut names = Vec::new();
+        for k in 0..symtab.3 / 24 {
+            let o = symtab.2 + 24 * k;
+            let name = cstr(str_off + u32_at(o)? as usize)?;
+            let info = get(o + 4, 1)?[0];
+            let shndx = u16_at(o + 6)? as usize;
+            if info & 0xf == 2 {
+                names.push(name.clone());
+            }
+            if name == symbol && shndx != 0 && shndx < 0xff00 {
+                found = Some((k, shndx, u64_at(o + 8)?, u64_at(o + 16)?));
+            }
+        }
+        let Some((_, shndx, value, size)) = found else {
+            bail!("BINDING_MISMATCH: symbol `{symbol}` is not defined in the object (functions: {})", names.join(", "));
+        };
+        let sec = sh(shndx)?;
+        if sec.1 & 0x4 == 0 {
+            bail!("BINDING_MISMATCH: symbol `{symbol}` is not in an executable section");
+        }
+        let len = if size > 0 { size as usize } else { sec.3.saturating_sub(value as usize) };
+        let start = value as usize;
+        if start.checked_add(len).is_none_or(|e| e > sec.3) {
+            bail!("FORMAT_MISMATCH: symbol `{symbol}` extends past its section");
+        }
+        let code = get(sec.2 + start, len)?.to_vec();
+        // Relocations applying to the function's bytes.
+        let mut needs = Vec::new();
+        for i in 0..shnum {
+            let h = sh(i)?;
+            if (h.0 == 4 || h.0 == 9) && h.5 as usize == shndx {
+                let ent = if h.0 == 4 { 24 } else { 16 };
+                let syms = sh(h.4 as usize)?;
+                let sstr = sh(syms.4 as usize)?.2;
+                for r in 0..h.3 / ent {
+                    let o = h.2 + ent * r;
+                    let off = u64_at(o)?;
+                    if off >= value && off < value + len as u64 {
+                        let sym = (u64_at(o + 8)? >> 32) as usize;
+                        let so = syms.2 + 24 * sym;
+                        let mut n = cstr(sstr + u32_at(so)? as usize)?;
+                        if n.is_empty() {
+                            n = format!("section {}", u16_at(so + 6)?);
+                        }
+                        needs.push(n);
+                    }
+                }
+            }
+        }
+        if !needs.is_empty() {
+            needs.sort();
+            needs.dedup();
+            bail!("UNRESOLVED_DEPENDENCY: `{symbol}` refers to {} through relocations; Mukoz does not link objects", needs.join(", "));
+        }
+        let mut img = Image::raw(&code, 0, &[])?;
+        img.modules = vec![Module { name: symbol.to_string(), base: CODE_BASE, size: len as u64 }];
+        Ok(img)
     }
 }
 

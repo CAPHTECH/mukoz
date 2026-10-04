@@ -1,0 +1,28 @@
+schema = "mukoz.contract/1"
+id = "selfcheck.range_contains"
+boundary = "routine"
+
+# addr = base + off (the binding forms it), so most generated accesses are near the range.
+[inputs]
+base = "bv64"
+size = "bv64"
+off = "bv64"
+width = "bv64"
+
+[results]
+inside = "bv64"
+
+[[ensures]]
+id = "inside_iff_contained_without_wrap"
+expr = """result.inside == ite(
+    not ult(input.base + input.off + input.width, input.base + input.off)
+    and not ult(input.base + input.size, input.base)
+    and ule(input.base, input.base + input.off)
+    and ule(input.base + input.off + input.width, input.base + input.size),
+  bv64(1), bv64(0))"""
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

@@ -1,0 +1,10 @@
+[package]
+name = "mukoz-kernels"
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+publish = false
+description = "Small no_std functions Mukoz uses, also checked by Mukoz itself as routines (docs/09 9.6 stage 3)"
+
+[lib]
+path = "src/lib.rs"

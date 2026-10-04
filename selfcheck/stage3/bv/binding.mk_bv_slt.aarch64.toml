@@ -1,0 +1,18 @@
+schema = "mukoz.binding/1"
+id = "selfcheck.kat2.mk_bv_slt@aarch64"
+contract = "selfcheck.kat2"
+target = "aarch64/elf/aapcs64/none"
+
+[entry]
+kind = "object_symbol"
+symbol = "mk_bv_slt"
+
+[arguments]
+x0 = "input.a"
+x1 = "input.b"
+
+[results]
+value = "x0"
+
+[completion]
+kind = "return_to_sentinel"

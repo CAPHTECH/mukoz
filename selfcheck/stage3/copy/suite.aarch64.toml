@@ -1,0 +1,19 @@
+schema = "mukoz.suite/1"
+id = "selfcheck.copy_bytes.aarch64"
+contract = "contract.toml"
+binding = "binding.aarch64.toml"
+executors = ["emulated"]
+
+[artifact]
+path = "../obj/kernels_aarch64.o"
+
+[selfcheck]
+checkers = "../../checkers.toml"
+
+[generate]
+seed = "copy"
+random_cases = 16
+
+[generate.vars.dst]
+len = "len(input.src)"
+

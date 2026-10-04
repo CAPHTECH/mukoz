@@ -1,0 +1,24 @@
+schema = "mukoz.binding/1"
+id = "selfcheck.elf_header@aarch64"
+contract = "selfcheck.elf_header"
+target = "aarch64/elf/aapcs64/none"
+
+[entry]
+kind = "object_symbol"
+symbol = "mk_elf_header_check"
+
+[arguments]
+x0 = "addr(buf)"
+x1 = "len(input.header)"
+x2 = "input.machine"
+
+[results]
+code = "x0"
+
+[regions.buf]
+size = "len(input.header)"
+init = "input.header"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

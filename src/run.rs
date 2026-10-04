@@ -64,7 +64,8 @@ pub fn load(suite_path: &Path, artifact: Option<&Path>, module_overrides: &[(Str
         (Entry::ElfEntry, None) if binding.target.format == Format::Elf => {
             let p = given()?;
             let b = read_artifact(&p)?;
-            let img = Image::elf(&b, binding.target.isa, stack_lo)?;
+            let native_only = suite.executors == ["native-process"];
+            let img = if native_only { Image::elf_for_native(&b, binding.target.isa)? } else { Image::elf(&b, binding.target.isa, stack_lo)? };
             let d = sha256_hex(&b);
             (img, p, b, d, Vec::new())
         }
@@ -72,6 +73,13 @@ pub fn load(suite_path: &Path, artifact: Option<&Path>, module_overrides: &[(Str
             let p = given()?;
             let b = read_artifact(&p)?;
             let img = Image::macho(&b, binding.target.isa)?;
+            let d = sha256_hex(&b);
+            (img, p, b, d, Vec::new())
+        }
+        (Entry::ObjectSymbol(sym), None) => {
+            let p = given()?;
+            let b = read_artifact(&p)?;
+            let img = Image::elf_object(&b, binding.target.isa, sym)?;
             let d = sha256_hex(&b);
             (img, p, b, d, Vec::new())
         }
@@ -210,6 +218,30 @@ fn platform_for(l: &Loaded, store: &Store, policy_path: Option<&Path>) -> Result
         }
     });
     Ok(p)
+}
+
+/// `independent` unless the suite says the subject is Mukoz itself; then `previous_version` when
+/// the running executable is listed as the previous version in the checkers file, else `self`.
+fn independence_of(suite: &Suite) -> Result<serde_json::Value> {
+    let Some(path) = &suite.checkers_path else {
+        return Ok(json!({ "value": "independent", "basis": "the subject is not Mukoz (no [selfcheck] in the suite)" }));
+    };
+    let text = std::fs::read_to_string(path).with_context(|| format!("checkers file {}", path.display()))?;
+    let v: toml::Value = toml::from_str(&text).map_err(|e| anyhow!("CHECKERS_ERROR: {}: {e}", path.display()))?;
+    if v.get("schema").and_then(|s| s.as_str()) != Some("mukoz.checkers/1") {
+        bail!("CHECKERS_ERROR: {} must have schema = \"mukoz.checkers/1\"", path.display());
+    }
+    let exe = std::env::current_exe()?;
+    let me = sha256_hex(&std::fs::read(&exe)?);
+    let previous: Vec<(String, String)> = v
+        .get("previous")
+        .and_then(|p| p.as_array())
+        .map(|a| a.iter().filter_map(|e| Some((e.get("version")?.as_str()?.to_string(), e.get("sha256")?.as_str()?.to_string()))).collect())
+        .unwrap_or_default();
+    Ok(match previous.iter().find(|(_, d)| *d == me) {
+        Some((ver, _)) => json!({ "value": "previous_version", "checker_sha256": me, "checker_version": ver, "basis": format!("the running mukoz is listed as the previous version in {}", path.display()) }),
+        None => json!({ "value": "self", "checker_sha256": me, "checker_version": EVALUATOR_VERSION, "previous_versions_listed": previous.len(), "basis": format!("the running mukoz is not listed in {}", path.display()) }),
+    })
 }
 
 fn reason_code(e: &str) -> String {
@@ -629,6 +661,19 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     if generated.stats.excluded_by_requires > 0 {
         limitations.push(format!("requires_excluded_{}_of_{generated_total}_generated_cases", generated.stats.excluded_by_requires));
     }
+    // docs/06 6.9: who checked whom.
+    let independence = independence_of(&l.suite)?;
+    if independence["value"] == "self" && admission == Admission::AcceptWithinScope {
+        let allowed = crate::policy::Policy::find(o.policy, &o.store.root)?.is_some_and(|p| p.allow_self_accept);
+        if !allowed {
+            admission = Admission::Hold;
+            reasons.push(
+                "SELF_CHECK_ONLY: the checker is the same Mukoz version as the subject (docs/06 6.9); \
+                 rerun with a previous version listed in the suite's checkers file, or set allow_self_accept in policy.toml"
+                    .into(),
+            );
+        }
+    }
     let data = json!({
         "run_id": run_id,
         "execution": "completed",
@@ -637,6 +682,7 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
             "reasons": reasons,
             "context_match": true,
             "release_authorized": false,
+            "independence": independence,
             "subject_context": context,
             "scope": {
                 "contract": l.contract.id,

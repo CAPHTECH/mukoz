@@ -1,0 +1,20 @@
+schema = "mukoz.binding/1"
+id = "selfcheck.range_contains@aarch64"
+contract = "selfcheck.range_contains"
+target = "aarch64/elf/aapcs64/none"
+
+[entry]
+kind = "object_symbol"
+symbol = "mk_range_contains"
+
+[arguments]
+x0 = "input.base"
+x1 = "input.size"
+x2 = "input.base + input.off"
+x3 = "input.width"
+
+[results]
+inside = "x0"
+
+[completion]
+kind = "return_to_sentinel"

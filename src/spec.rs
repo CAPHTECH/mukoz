@@ -361,7 +361,7 @@ impl Target {
         };
         let os = parts[3];
         match (format, os) {
-            (Format::Raw, "none") | (Format::Raw, "linux") | (Format::Elf, "linux") | (Format::MachO, "darwin") => {}
+            (Format::Raw, "none") | (Format::Elf, "none") | (Format::Raw, "linux") | (Format::Elf, "linux") | (Format::MachO, "darwin") => {}
             _ => bail!("UNSUPPORTED_FEATURE: `{s}` (implemented: <isa>/raw/<abi>/none routines, <isa>/raw|elf/<abi>/linux and <isa>/macho/<abi>/darwin processes)"),
         }
         let ok = match os {
@@ -400,6 +400,8 @@ pub enum Entry {
     ElfEntry,
     /// LC_MAIN or LC_UNIXTHREAD of a Mach-O executable.
     MachoEntry,
+    /// A function symbol of an ELF relocatable object (routines only).
+    ObjectSymbol(String),
     /// `module.symbol` from the link file.
     Symbol(String),
 }
@@ -461,6 +463,7 @@ impl Binding {
             ("raw_offset", Some(o), None) if target.format == Format::Raw && f.link.is_none() => Entry::Offset(o),
             ("elf_entry", None, None) if target.format == Format::Elf => Entry::ElfEntry,
             ("macho_entry", None, None) if target.format == Format::MachO => Entry::MachoEntry,
+            ("object_symbol", None, Some(sym)) if target.format == Format::Elf && !target.is_process() => Entry::ObjectSymbol(sym.clone()),
             ("symbol", None, Some(sym)) if target.format == Format::Raw && f.link.is_some() => Entry::Symbol(sym.clone()),
             (k, ..) => bail!(
                 "BINDING_MISMATCH: entry kind `{k}` with these fields does not fit `{}` (raw: kind = \"raw_offset\", offset = N; \
@@ -653,6 +656,15 @@ struct SuiteFile {
     limits: LimitsFile,
     #[serde(default)]
     regressions: RegressionsFile,
+    /// The subject is (part of) Mukoz itself: record the checker's independence (docs/06 6.9).
+    selfcheck: Option<SelfcheckFile>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+struct SelfcheckFile {
+    /// `checkers.toml` listing the previous version's mukoz executables (N-1).
+    checkers: String,
 }
 
 fn default_executors() -> Vec<String> {
@@ -744,6 +756,7 @@ pub struct Suite {
     pub include_regressions: bool,
     pub vary_placement: bool,
     pub executors: Vec<String>,
+    pub checkers_path: Option<PathBuf>,
 }
 
 pub const MAX_CASES_HARD: u64 = 8192;
@@ -788,6 +801,7 @@ impl Suite {
         if max_cases > MAX_CASES_HARD {
             bail!("limits.max_cases {max_cases} exceeds the hard limit {MAX_CASES_HARD}");
         }
+        let checkers_path = f.selfcheck.map(|c| dir.join(c.checkers));
         Ok(Suite {
             id: f.id,
             digest,
@@ -808,6 +822,7 @@ impl Suite {
             include_regressions: f.regressions.include,
             vary_placement,
             executors: f.executors,
+            checkers_path,
         })
     }
 }

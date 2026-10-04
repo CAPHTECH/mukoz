@@ -1,0 +1,18 @@
+schema = "mukoz.binding/1"
+id = "selfcheck.kat2.mk_bv_ult@x86_64"
+contract = "selfcheck.kat2"
+target = "x86_64/elf/sysv-x86_64/none"
+
+[entry]
+kind = "object_symbol"
+symbol = "mk_bv_ult"
+
+[arguments]
+rdi = "input.a"
+rsi = "input.b"
+
+[results]
+value = "rax"
+
+[completion]
+kind = "return_to_sentinel"

@@ -1,0 +1,28 @@
+schema = "mukoz.binding/1"
+id = "selfcheck.copy_bytes@aarch64"
+contract = "selfcheck.copy_bytes"
+target = "aarch64/elf/aapcs64/none"
+
+[entry]
+kind = "object_symbol"
+symbol = "mk_copy_bytes"
+
+[arguments]
+x0 = "addr(dst)"
+x1 = "addr(src)"
+x2 = "len(input.src)"
+
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(input.src)"
+init = "input.src"
+access = "r"
+
+[completion]
+kind = "return_to_sentinel"

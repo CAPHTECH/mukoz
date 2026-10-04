@@ -1,0 +1,8 @@
+# Trial zone for self-check stage 3: the kernel objects built by build.py.
+[[native_trial_zones]]
+id = "selfcheck-kernels"
+artifact_dir = "obj"
+executors = ["native-routine"]
+targets = ["x86_64/elf/sysv-x86_64/none"]
+require_isolation = ["network_restriction", "filesystem_restriction", "resource_limits", "descendant_process_control", "credential_isolation"]
+max_wall_ms_per_case = 1000

@@ -15,6 +15,9 @@ struct PolicyFile {
     native_trial_zones: Vec<ZoneFile>,
     #[serde(default)]
     native_allow: Vec<AllowFile>,
+    /// Accept self-checks whose only checker is the same version (docs/06 6.9). Default false.
+    #[serde(default)]
+    allow_self_accept: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -52,6 +55,7 @@ pub struct Policy {
     pub digest: String,
     pub zones: Vec<Zone>,
     allow: Vec<AllowFile>,
+    pub allow_self_accept: bool,
 }
 
 pub const CAPABILITIES: [&str; 7] = [
@@ -83,7 +87,7 @@ impl Policy {
             }
             zones.push(Zone { id: z.id, dir: dir.join(z.artifact_dir), executors: z.executors, targets: z.targets, require_isolation: z.require_isolation, max_wall_ms_per_case: z.max_wall_ms_per_case });
         }
-        Ok(Policy { path: path.to_path_buf(), digest: crate::spec::sha256_hex(text.as_bytes()), zones, allow: f.native_allow })
+        Ok(Policy { path: path.to_path_buf(), digest: crate::spec::sha256_hex(text.as_bytes()), zones, allow: f.native_allow, allow_self_accept: f.allow_self_accept })
     }
 
     /// `--policy`, else `policy.toml` next to the store directory (docs/06 6.11), else none.

@@ -290,8 +290,8 @@ fn range_ok(allowed: &[(u64, u64, bool, bool, String)], addr: u64, len: u64, wri
     if len == 0 {
         return true;
     }
-    let Some(end) = addr.checked_add(len) else { return false };
-    allowed.iter().any(|(lo, hi, r, w, _)| addr >= *lo && end <= *hi && if write { *w } else { *r })
+    // The containment test is the kernel that self-check stage 3 checks as a routine.
+    allowed.iter().any(|(lo, hi, r, w, _)| mukoz_kernels::mk_range_contains(*lo, hi - lo, addr, len) == 1 && if write { *w } else { *r })
 }
 
 // ---------------------------------------------------------------- monitors
