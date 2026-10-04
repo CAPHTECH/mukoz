@@ -121,10 +121,10 @@ exports = { load = 0, save = 0x80 }
 | 性質 | 意味 | 責任 |
 |---|---|---|
 | `link.<記号>.requires` | 呼出し時に、呼び先の requires が偽 | **呼び元** |
-| `link.<記号>.ensures` | 戻ったときに、呼び先の ensures か frame が偽 | **呼び先** |
+| `link.<記号>.ensures` | 戻ったときに、呼び先の ensures か frame が偽(呼出し時に requires が成り立った呼出しだけ評価する。requires を破った呼出しの結果は呼び先の責任にしない) | **呼び先** |
 | `link.<記号>.abi` | 戻ったときに callee-saved レジスタが変わっていた | **呼び先** |
 
-- 値の復元: 引数が `input.x`(bv・bool)、`len(input.b)`、`addr(region)` の形のときだけ復元できる。領域の大きさは `len(...)` の引数から、それができなければ Binding の領域に `monitor_size = "<引数の式>"` を書く(例: dst の大きさが requires で len(src) と等しいなら `monitor_size = "len(input.src)"`)。復元できない Binding は読込み時に `MONITOR_UNSUPPORTED`。
+- 値の復元: 引数が `input.x`(bv・bool)、`len(input.b)`、`addr(region)` の形のときだけ復元できる。領域の大きさは `len(...)` の引数から、それができなければ Binding の領域に `monitor_size = "<引数の式>"` を書く(例: dst の大きさが requires で len(src) と等しいなら `monitor_size = "len(input.src)"`)。契約の requires・ensures が参照しない入力(Suite の生成器だけが使う、整形済みの値を組み立てるための入力など)は復元しなくてよい。参照する変数を復元できない Binding は読込み時に `MONITOR_UNSUPPORTED`。
 - 戻りの検出: 呼出し時の戻り先(x86-64 は [rsp]、AArch64 は x30)に、戻り後の sp で到達したとき。再帰・入れ子も追う。
 - 呼び先が一度も呼ばれなかったケースでは、その監視の性質を評価しない。全ケースで一度も呼ばれなければ NOT_EVALUATED(HOLD)。
 - 違反の詳細(`detail`)に `blame`、呼出し回数、`why_false`、requires 違反では戻り先(`return_to`、呼出し位置の直後)を出す。

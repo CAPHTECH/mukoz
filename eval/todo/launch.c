@@ -1,5 +1,7 @@
 /* Native launcher for raw x86-64 process images (eval/todo oracle).
- * usage (run under `unshare -Urn`): launch <image.bin> <workdir> [args...]
+ * usage (run under `unshare -Urn`): launch [-b <hex base>] <image.bin> <workdir> [args...]
+ * -b maps the image at another base (e.g. 0xf0000 for a flattened linked image, see
+ * ../todo_mod/flatten.py); execution still starts at 0x100000.
  * Maps the image at 0x100000 (r-x) and a zeroed 64 KiB data area at 0x10000000 (rw-),
  * chroots into <workdir>, limits resources, installs a seccomp filter that allows only
  * read/write/open/close/lseek/openat/exit/exit_group, builds a Linux-style initial stack
@@ -21,14 +23,17 @@
 #define ALLOW(n) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, n, 0, 1), BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
 
 int main(int argc, char **argv) {
-    if (argc < 3) { fprintf(stderr, "usage: launch image workdir [args]\n"); return 100; }
+    unsigned long base = 0x100000;
+    if (argc > 2 && strcmp(argv[1], "-b") == 0) { base = strtoul(argv[2], NULL, 16); argv += 2; argc -= 2; }
+    if (argc < 3 || base > 0x100000 || (base & 4095)) { fprintf(stderr, "usage: launch [-b hexbase] image workdir [args]\n"); return 100; }
     int fd = open(argv[1], O_RDONLY);
     if (fd < 0) { perror("image"); return 100; }
-    static unsigned char img[1 << 20];
-    ssize_t n = read(fd, img, sizeof img);
+    static unsigned char img[16 << 20];
+    ssize_t n = 0, r;
+    while ((r = read(fd, img + n, sizeof img - n)) > 0) n += r;
     close(fd);
-    if (n <= 0) return 100;
-    void *code = mmap((void *)0x100000, (n + 4095) & ~4095UL, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+    if (n <= 0 || base + n <= 0x100000) return 100;
+    void *code = mmap((void *)base, (n + 4095) & ~4095UL, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     void *data = mmap((void *)0x10000000, 65536, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     size_t ss = 1 << 20;
     char *stk = mmap(NULL, ss, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

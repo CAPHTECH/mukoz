@@ -346,6 +346,13 @@ fn link_monitors_assign_blame() {
     let f = &v["data"]["findings"][0]["detail"];
     assert_eq!(f["blame"], "caller", "{f:#}");
     assert_eq!(f["violations"][0]["return_to"], "main+0x18", "{f:#}");
+    // A callee that is wrong only outside its requires owes nothing on those calls: the
+    // broken requires is the caller's, and no ensures violation is charged to the callee.
+    // (The program's own contract still fails: the result really is wrong.)
+    let (v, _) = check_args(&["examples/link_sum3/suite_strict.toml", "--module", "arith=fixtures/x86_64/add64_small_only.bin"]);
+    let got = violated(&v);
+    assert!(got.contains(&"link.arith.add64.requires".to_string()), "{got:?}");
+    assert!(!got.contains(&"link.arith.add64.ensures".to_string()), "{got:?}");
 }
 
 #[test]

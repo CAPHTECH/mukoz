@@ -109,16 +109,17 @@ def rcmd(rng, db):
     return rng.choice([[], [b"frob"], [b""], [b"add"], [b"list", b"x"], [b"done"], [b"clear", b"1"], [b"add", b"a", b"b"], [b"ADD", b"x"], [b"rm", b"1", b"2"]])
 
 
-def run(image, work, args):
+def run(image, work, args, base=None):
     try:
-        p = subprocess.run(["unshare", "-Urn", LAUNCH, image, work] + [a.decode("latin-1") for a in args],
+        p = subprocess.run(["unshare", "-Urn", LAUNCH] + (["-b", base] if base else []) + [image, work] + [a.decode("latin-1") for a in args],
                            capture_output=True, timeout=10)
     except subprocess.TimeoutExpired:
         return None, b"", b"timeout"
     return p.returncode, p.stdout, p.stderr
 
 
-def judge(image, sessions=300, seed=None):
+def judge(image, sessions=300, seed=None, base=None):
+    """base: map the image there ("f0000" for a flattened linked image, see ../todo_mod/flatten.py)."""
     seed = seed if seed is not None else random.SystemRandom().randrange(2**63)
     rng = random.Random(seed)
     fails, cmds = [], 0
@@ -134,7 +135,7 @@ def judge(image, sessions=300, seed=None):
                 if args[:1] == [b"add"] and db and unpack(db) and unpack(db)[-1][0] == 0xFFFFFFFF:
                     args = [b"list"]
                 code, out, err, ndb = model(args, db)
-                rc, o, e = run(image, work, args)
+                rc, o, e = run(image, work, args, base)
                 got = open(path, "rb").read() if os.path.exists(path) else None
                 cmds += 1
                 bad = []
@@ -158,4 +159,5 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     n = int(a[a.index("--sessions") + 1]) if "--sessions" in a else 300
     sd = int(a[a.index("--seed") + 1]) if "--seed" in a else None
-    print(json.dumps(judge(a[0], n, sd)))
+    b = a[a.index("--base") + 1] if "--base" in a else None
+    print(json.dumps(judge(a[0], n, sd, b)))

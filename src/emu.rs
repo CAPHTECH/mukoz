@@ -287,6 +287,9 @@ struct Frame {
     saved: Vec<(&'static str, u64)>,
     env: ValEnv,
     regions: Vec<(usize, u64, u64)>,
+    /// The callee's requires held (and were decidable) at the call: only then is it bound by
+    /// its ensures. A call that breaks requires is the caller's fault alone.
+    obligated: bool,
 }
 
 struct MonState {
@@ -390,14 +393,14 @@ fn monitor_enter(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, idx: usize, ms: &m
                 note(st, serde_json::json!({ "kind": "requires", "symbol": m.symbol, "requires": id, "return_to": loc(ret), "why_false": why.into_iter().map(|(k, v)| serde_json::json!([k, v])).collect::<Vec<_>>() }));
             }
             Err(e) => {
+                ok = false;
                 st.inconclusive += 1;
                 note(st, serde_json::json!({ "kind": "monitor_error", "symbol": m.symbol, "requires": id, "error": e }));
             }
         }
     }
-    let _ = ok;
     let saved = isa_info(isa).callee_saved.iter().map(|r| (*r, uc.reg_read(reg_id(isa, r)).unwrap_or(0))).collect();
-    ms.frames.push(Frame { mon: idx, ret, sp_after, saved, env, regions });
+    ms.frames.push(Frame { mon: idx, ret, sp_after, saved, env, regions, obligated: ok });
 }
 
 fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mut MonState) {
@@ -418,7 +421,9 @@ fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mu
             env.insert(format!("after.{o}"), Value::Bytes(b));
         }
     }
-    for (id, r, why) in eval_conds(&m.contract.ensures, &env) {
+    // ABI preservation is owed on every call; ensures and frame only when requires held.
+    let conds: &[crate::spec::Cond] = if f.obligated { &m.contract.ensures } else { &[] };
+    for (id, r, why) in eval_conds(conds, &env) {
         match r {
             Ok(true) => {}
             Ok(false) => {
@@ -431,7 +436,7 @@ fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mu
             }
         }
     }
-    for s in m.contract.state.keys() {
+    for s in m.contract.state.keys().filter(|_| f.obligated) {
         if !m.contract.modifies.contains(s) {
             if let (Some(b), Some(a)) = (env.get(&format!("before.{s}")), env.get(&format!("after.{s}"))) {
                 if b != a {

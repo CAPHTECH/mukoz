@@ -159,7 +159,7 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
     Ok(ordered)
 }
 
-fn collect_paths(e: &expr::Expr, out: &mut Vec<String>) {
+pub fn collect_paths(e: &expr::Expr, out: &mut Vec<String>) {
     use expr::Expr::*;
     match e {
         Path(p) => out.push(p.join(".")),

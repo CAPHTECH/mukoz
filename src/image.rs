@@ -392,8 +392,15 @@ fn plan_monitor(sym: &str, addr: u64, contract: Contract, binding: Binding) -> R
     }
     // Regions sized by a length argument first, so monitor_size expressions can use their contents.
     regions.sort_by_key(|r| r.size_from_len.is_none());
+    // Only variables the contract's conditions read must be recovered: an input that no
+    // requires/ensures mentions only parameterizes the suite's generator (e.g. the parts a
+    // derived, well-formed buffer is built from) and plays no part in judging a call.
+    let mut used = Vec::new();
+    for c in contract.requires.iter().chain(&contract.ensures) {
+        crate::plan::collect_paths(&c.expr, &mut used);
+    }
     for k in contract.inputs.keys().map(|k| format!("input.{k}")).chain(contract.state.keys().map(|k| format!("before.{k}"))) {
-        if !known.contains(&k) {
+        if !known.contains(&k) && used.contains(&k) {
             return Err(unsupported(format!("`{k}` is not recovered from any argument or region")));
         }
     }
