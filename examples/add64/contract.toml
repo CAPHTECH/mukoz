@@ -1,0 +1,20 @@
+schema = "mukoz.contract/1"
+id = "arith.add64"
+boundary = "routine"
+
+[inputs]
+a = "bv64"
+b = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "sum"
+expr = "result.value == input.a + input.b"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"
