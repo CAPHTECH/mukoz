@@ -80,6 +80,39 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
             bail!("generate.vars.{k}: no such input or state variable");
         }
     }
+    // Fields that do not apply to a variable's type are errors, never silently ignored.
+    for s in &out {
+        let g = &s.generator;
+        let bad = |field: &str, ty: &str| anyhow!("generate.vars.{}.{field} does not apply to a {ty} variable", s.name);
+        match s.vt.ty {
+            Ty::Bool => {
+                if g.len.is_some() { return Err(bad("len", "bool")); }
+                if g.max.is_some() { return Err(bad("max", "bool")); }
+                if g.bytes.is_some() { return Err(bad("bytes", "bool")); }
+                if !g.values.is_empty() { return Err(bad("values", "bool")); }
+            }
+            Ty::Bv(_) => {
+                if g.len.is_some() { return Err(bad("len", "bitvector")); }
+                if g.bytes.is_some() { return Err(bad("bytes", "bitvector")); }
+            }
+            Ty::Bytes => {
+                if g.max.is_some() {
+                    return Err(anyhow!("generate.vars.{}.max does not apply to a bytes variable (use `len`, or max_len in the contract)", s.name));
+                }
+                if let Some(a) = &g.bytes {
+                    if a != "nonzero" && a != "ascii" {
+                        bail!("generate.vars.{}.bytes must be `nonzero` or `ascii`, got `{a}`", s.name);
+                    }
+                }
+                for v in &g.values {
+                    let b = expr::unhex(v).ok_or_else(|| anyhow!("generate.vars.{}.values: `{v}` is not hex", s.name))?;
+                    if b.len() as u64 > s.vt.max_len {
+                        bail!("generate.vars.{}.values: `{v}` has {} bytes, more than max_len {}", s.name, b.len(), s.vt.max_len);
+                    }
+                }
+            }
+        }
+    }
     // Order slots so that variables referenced by `len`/`max` come first.
     let deps = |s: &VarSlot| -> Result<Vec<String>> {
         let mut d = Vec::new();
@@ -191,6 +224,13 @@ fn eval_max(slot: &VarSlot, env: &ValEnv) -> Result<Option<u64>> {
     }
 }
 
+fn check_len(slot: &VarSlot, n: u64) -> Result<()> {
+    if n > slot.vt.max_len {
+        bail!("PLAN_ERROR: generate.vars.{}.len evaluated to {n}, more than max_len {} in the contract", slot.name, slot.vt.max_len);
+    }
+    Ok(())
+}
+
 fn eval_len(slot: &VarSlot, env: &ValEnv) -> Result<Option<u64>> {
     let Some(src) = &slot.generator.len else { return Ok(None) };
     let e = expr::parse(src).map_err(|m| anyhow!("generate.vars.{}.len: {m}", slot.name))?;
@@ -241,9 +281,7 @@ fn candidates(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Vec<
                 }
             };
             for n in lens {
-                if n > slot.vt.max_len {
-                    continue;
-                }
+                check_len(slot, n)?;
                 out.push(Value::Bytes(random_bytes(rng, n, slot.generator.bytes.as_deref())));
             }
             Ok(out)
@@ -260,7 +298,10 @@ fn random_value(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Va
         },
         Ty::Bytes => {
             let n = match eval_len(slot, env)? {
-                Some(n) => n.min(slot.vt.max_len),
+                Some(n) => {
+                    check_len(slot, n)?;
+                    n
+                }
                 None => rng.below(slot.vt.max_len + 1),
             };
             Value::Bytes(random_bytes(rng, n, slot.generator.bytes.as_deref()))

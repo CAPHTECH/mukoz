@@ -484,6 +484,7 @@ struct LimitsFile {
     instructions_per_case: Option<u64>,
     wall_ms_per_case: Option<u64>,
     max_cases: Option<u64>,
+    min_admitted_cases: Option<u64>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -503,6 +504,8 @@ pub struct Limits {
     pub instructions_per_case: u64,
     pub wall_ms_per_case: u64,
     pub max_cases: u64,
+    /// HOLD when fewer cases than this satisfy `requires`. Default: min(100, generated/4).
+    pub min_admitted_cases: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -563,6 +566,7 @@ impl Suite {
                 instructions_per_case: f.limits.instructions_per_case.unwrap_or(100_000),
                 wall_ms_per_case: f.limits.wall_ms_per_case.unwrap_or(1000),
                 max_cases,
+                min_admitted_cases: f.limits.min_admitted_cases,
             },
             include_regressions: f.regressions.include,
         })

@@ -29,6 +29,8 @@
 
 `check` は `plan` と `run` と `assess` の合成であり、別の判定ロジックを持たない。
 
+**0.1 の実装済みコマンド:** `check`(`--artifact` `--fail-fast` `--gate` `--store`)・`show`・`replay`・`inspect`・`regressions list` / `prune`・`platform show`・`expr check`。`plan` / `run` / `assess` / `shrink` / `schema` / `platform probe` / `platform qualify` と `show` の `--page` / `--disasm` は未実装。引数なしで `mukoz` を実行すると使い方を表示する。
+
 **オプション:**
 
 - `--artifact <file>`: Suiteの `[artifact] path` を上書きする。生成のたびにファイル名が変わる場合に使う(04章 4.7)。

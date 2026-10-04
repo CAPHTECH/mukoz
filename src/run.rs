@@ -132,7 +132,8 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
         }
     }
     let summaries = judge::aggregate(&properties, &per_case, skipped);
-    let (admission, reasons) = judge::admit(&summaries, total);
+    let generated_total = total + generated.stats.excluded_by_requires;
+    let (admission, reasons) = judge::admit(&summaries, total, generated_total, l.suite.limits.min_admitted_cases);
 
     // Counterexamples: up to CX_PER_PROPERTY per violated property.
     let mut summaries = summaries;
@@ -202,6 +203,9 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     }
     if skipped > 0 {
         limitations.push(format!("fail_fast_skipped_{skipped}_cases"));
+    }
+    if generated.stats.excluded_by_requires > 0 {
+        limitations.push(format!("requires_excluded_{}_of_{generated_total}_generated_cases", generated.stats.excluded_by_requires));
     }
     let data = json!({
         "run_id": run_id,

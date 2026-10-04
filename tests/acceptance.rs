@@ -185,3 +185,44 @@ fn missing_artifact_is_a_usage_error() {
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
 }
+
+/// Writes a variant of the add64 example (contract + suite) into a temp dir.
+fn add64_variant(extra_contract: &str, extra_suite: &str) -> (String, String) {
+    let dir = tempdir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let ex = std::fs::canonicalize("examples/add64").unwrap();
+    let c = std::fs::read_to_string(ex.join("contract.toml")).unwrap() + extra_contract;
+    std::fs::write(format!("{dir}/contract.toml"), c).unwrap();
+    std::fs::copy(ex.join("binding.x86_64.toml"), format!("{dir}/binding.toml")).unwrap();
+    let s = format!(
+        "schema = \"mukoz.suite/1\"\nid = \"t\"\ncontract = \"contract.toml\"\nbinding = \"binding.toml\"\n\n[generate]\nseed = \"1\"\nrandom_cases = 1024\n{extra_suite}"
+    );
+    std::fs::write(format!("{dir}/suite.toml"), s).unwrap();
+    (dir.clone(), format!("{dir}/suite.toml"))
+}
+
+// Found by an agent writing a contract: `requires` dropped 525 of 528 cases and the
+// result was still ACCEPT_WITHIN_SCOPE. A near-vacuous scope must be HOLD (I5).
+#[test]
+fn requires_excluding_most_cases_is_hold() {
+    let (dir, suite) = add64_variant("\n[[requires]]\nid = \"rare\"\nexpr = \"input.a == bv64(5)\"\n", "");
+    let v = check(&suite, &fx("add64"), &[]);
+    assert_eq!(admission(&v), "HOLD", "{:#}", v["data"]["assessment"]);
+    let reasons = v["data"]["assessment"]["reasons"].to_string();
+    assert!(reasons.contains("LOW_ADMITTED_CASES"), "{reasons}");
+    // An explicit, deliberate floor restores acceptance.
+    let (dir2, suite2) = add64_variant("\n[[requires]]\nid = \"rare\"\nexpr = \"input.a == bv64(5)\"\n", "\n[limits]\nmin_admitted_cases = 1\n");
+    assert_eq!(admission(&check(&suite2, &fx("add64"), &[])), "ACCEPT_WITHIN_SCOPE");
+    let _ = std::fs::remove_dir_all(dir);
+    let _ = std::fs::remove_dir_all(dir2);
+}
+
+// Generator fields that do not apply are errors, not silently ignored.
+#[test]
+fn inapplicable_generator_fields_are_errors() {
+    let (dir, suite) = add64_variant("", "\n[generate.vars.a]\nlen = \"bv64(3)\"\n");
+    let v = check(&suite, &fx("add64"), &[]);
+    assert_eq!(v["ok"], false, "{v:#}");
+    assert!(v["errors"].to_string().contains("does not apply"), "{v:#}");
+    let _ = std::fs::remove_dir_all(dir);
+}

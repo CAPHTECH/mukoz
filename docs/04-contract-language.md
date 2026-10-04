@@ -381,13 +381,14 @@ trace_bytes_per_case = 4194304
 - `[artifact]` の `path` は所在を示すだけで、同一性は読み込んだ時点のスナップショットの digest で決まる。Planはその digest に結び付き、実行の直前・直後に digest を検査する(08章 8.5)。
 - `[artifact]` も `--artifact` もない場合は `CONTRACT_GAP` ではなく使い方の誤り(終了コード2)とする。
 - bv64 の既定境界値は `0, 1, 2, 0x7fff…ffff, 0x8000…0000, 0xffff…fffe, 0xffff…ffff, 0x0101…0101` の8個。直積なら2入力で64件、ランダムと合わせて4,160件。重複を除かず、生成順をcase IDに含める。重複入力数は報告し、「4,160個の異なる入力」とは書かない。
-- 境界値は `[generate.values]` で上書き・追加できる。
+- 境界値は `[generate.vars.<変数名>]` で追加・制御できる(実装済みの項目は 4.10)。
 - bytes は長さ0・1・`max_len`・ランダム長を既定とする。
 - 必須claimは既定で「Contractの全ensures + frame + Bindingのmachine claim」。Suiteは追加はできるが削除はできない。削除はPolicyでのみ行い、その事実を証跡に残す。
 - **回帰ケース:** 過去の反例は回帰ケースとして自動で加わる(4.8)。`[regressions] include = false` で外せるが、外したことを証跡と出力の `limitations` に記録する。
 - `executors` に複数を書くと、同じケースを複数のExecutorで実行し、差分を比べる(06章 6.8)。
 - 上限がPolicyの上限を超える場合は計画を拒否し、黙って切り詰めない。
 - 有効なケース(事前条件を満たすもの)が0件なら HOLD(`VACUOUS_SCOPE`)。
+- 有効なケースが下限未満なら HOLD(`LOW_ADMITTED_CASES`)。下限の既定は min(100, 生成数の1/4)。事前条件がほとんどのケースを捨てるのは、生成器が契約の想定する入力を作れていない兆候であり、残りの数件での合格は範囲を過大に見せるため。意図して絞る場合は `[limits] min_admitted_cases` で下限を明示する。捨てた件数は常に `limitations` に出す。
 
 ## 4.8 回帰ケース
 
@@ -413,3 +414,22 @@ AIが生成と検査を繰り返すとき、前に見つかった失敗が再発
 | 型が合わない | `CONTRACT_TYPE_ERROR` |
 | 生成器が事前条件を満たすケースを作れない | `VACUOUS_SCOPE`(論理的矛盾とは断定しない) |
 | Binding と Contract の変数が対応しない | `BINDING_MISMATCH` |
+
+## 4.10 実装状況(mukoz 0.1)
+
+この章は設計であり、実装はその部分集合である。**食い違うときは実装(ツールのエラーメッセージ)が正しい。**契約を書くエージェントのために、実装済みの範囲をここに固定する。
+
+| 項目 | 0.1 の実装 |
+|---|---|
+| Suite の `contract` / `binding` | **ファイルパス**(Suite からの相対)。ID 参照は未実装 |
+| `executors` | `["emulated"]` のみ |
+| `[generate]` | `seed`・`boundary`(`product` / `none`)・`random_cases` |
+| `[generate.vars.<名前>]` | `values`: 追加の値(bv は 10進/0x16進の文字列、bytes は16進文字列。`hex"..."` 形式ではない)。`len`: bytes の長さの式(前の変数を参照可。例 `len(input.src) + len(input.src)`)。`max`: bv の上限の式(含む。前の変数を参照可)。`bytes`: bytes の値域 `nonzero` / `ascii`。型に合わない項目はエラー |
+| 依存する生成 | `len` / `max` が参照する変数を先に生成する(循環はエラー)。`len` が契約の `max_len` を超えたら `PLAN_ERROR`(切り詰めない) |
+| `[limits]` | `instructions_per_case`・`wall_ms_per_case`・`max_cases`(上限 8192)・`min_admitted_cases`。`guest_memory_bytes` / `trace_bytes_per_case` は未実装 |
+| 領域の配置の生成(alignment・相対位置) | 未実装。各領域は別々の固定番地に置く |
+| machine claim | `machine.returned`(SP の復元を含む)・`machine.abi.callee_saved`・`machine.abi.flags`(x86 の DF)・`machine.abi.reserved`(apple-arm64 の x18 のみ)・`machine.memory.access`・`effects.no_forbidden`。`machine.abi.stack` は独立の claim ではなく `machine.returned` に含む |
+| 式 | 4.4 の型付き式。整数リテラルは `bvN(...)` で幅を明示する(契約内の裸の整数は `CONTRACT_TYPE_ERROR`)。`mukoz expr check` は構文だけを検査し、型は契約の読込み時に検査する |
+| `forall` / `count` の範囲 | 1式あたり 65,536 まで |
+| プロセス Binding・環境モデル | 未実装(境界は `routine` のみ) |
+

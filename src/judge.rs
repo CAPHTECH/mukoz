@@ -264,7 +264,8 @@ pub enum Admission {
 }
 
 /// docs/06 6.6. `valid_cases` counts cases that satisfied `requires`.
-pub fn admit(claims: &[ClaimSummary], valid_cases: usize) -> (Admission, Vec<String>) {
+/// `generated` counts cases produced before `requires` filtering; `min_admitted` overrides the default floor.
+pub fn admit(claims: &[ClaimSummary], valid_cases: usize, generated: usize, min_admitted: Option<u64>) -> (Admission, Vec<String>) {
     let mut reasons = Vec::new();
     if claims.iter().any(|c| c.evaluation == Eval::Violated) {
         for c in claims.iter().filter(|c| c.evaluation == Eval::Violated) {
@@ -274,6 +275,15 @@ pub fn admit(claims: &[ClaimSummary], valid_cases: usize) -> (Admission, Vec<Str
     }
     if valid_cases == 0 {
         return (Admission::Hold, vec!["VACUOUS_SCOPE: no case satisfied `requires`".into()]);
+    }
+    // Near-vacuous scope: `requires` filtered out most generated cases (I5). The generator is not
+    // producing the inputs the contract talks about; acceptance on the remainder would overstate the scope.
+    let floor = min_admitted.unwrap_or_else(|| 100.min(generated.div_ceil(4) as u64)) as usize;
+    if valid_cases < floor {
+        reasons.push(format!(
+            "LOW_ADMITTED_CASES: only {valid_cases} of {generated} generated cases satisfied `requires` (minimum {floor}); \
+             make the generator produce valid inputs (e.g. a dependent `len`/`max`) or set limits.min_admitted_cases"
+        ));
     }
     for c in claims {
         match c.evaluation {
@@ -302,7 +312,7 @@ mod tests {
         let props = vec!["a".to_string()];
         let per = vec![("c1".to_string(), vec![cc("a", Eval::SatisfiedInScope)]), ("c2".to_string(), vec![cc("a", Eval::Inconclusive)])];
         let s = aggregate(&props, &per, 0);
-        assert_eq!(admit(&s, 2).0, Admission::Hold);
+        assert_eq!(admit(&s, 2, 2, None).0, Admission::Hold);
     }
 
     #[test]
@@ -310,7 +320,7 @@ mod tests {
         let props = vec!["a".to_string(), "b".to_string()];
         let per = vec![("c1".to_string(), vec![cc("a", Eval::SatisfiedInScope)])];
         let s = aggregate(&props, &per, 0);
-        assert_eq!(admit(&s, 1).0, Admission::Hold);
+        assert_eq!(admit(&s, 1, 1, None).0, Admission::Hold);
     }
 
     #[test]
@@ -318,7 +328,7 @@ mod tests {
         let props = vec!["a".to_string()];
         let per = vec![("c1".to_string(), vec![cc("a", Eval::SatisfiedInScope)])];
         let s = aggregate(&props, &per, 3);
-        assert_eq!(admit(&s, 4).0, Admission::Hold);
+        assert_eq!(admit(&s, 4, 4, None).0, Admission::Hold);
     }
 
     // I5: no valid case is HOLD even when nothing failed.
@@ -326,7 +336,7 @@ mod tests {
     fn i5_vacuous_is_hold() {
         let props = vec!["a".to_string()];
         let s = aggregate(&props, &[], 0);
-        assert_eq!(admit(&s, 0).0, Admission::Hold);
+        assert_eq!(admit(&s, 0, 0, None).0, Admission::Hold);
     }
 
     #[test]
@@ -334,7 +344,7 @@ mod tests {
         let props = vec!["a".to_string()];
         let per = vec![("c1".to_string(), vec![cc("a", Eval::Violated)]), ("c2".to_string(), vec![cc("a", Eval::Inconclusive)])];
         let s = aggregate(&props, &per, 0);
-        assert_eq!(admit(&s, 2).0, Admission::Reject);
+        assert_eq!(admit(&s, 2, 2, None).0, Admission::Reject);
     }
 
     #[test]
@@ -342,6 +352,6 @@ mod tests {
         let props = vec!["a".to_string()];
         let per = vec![("c1".to_string(), vec![cc("a", Eval::SatisfiedInScope)])];
         let s = aggregate(&props, &per, 0);
-        assert_eq!(admit(&s, 1).0, Admission::AcceptWithinScope);
+        assert_eq!(admit(&s, 1, 1, None).0, Admission::AcceptWithinScope);
     }
 }
