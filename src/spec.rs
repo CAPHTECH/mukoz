@@ -474,6 +474,8 @@ pub struct VarGenFile {
     pub values: Vec<String>,
     /// Byte alphabet for bytes variables, e.g. "nonzero".
     pub bytes: Option<String>,
+    /// Upper bound (inclusive) for bitvector variables; may refer to earlier variables.
+    pub max: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]

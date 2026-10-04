@@ -1,0 +1,20 @@
+schema = "mukoz.contract/1"
+id = "task.shl_var"
+boundary = "routine"
+
+[inputs]
+x = "bv64"
+s = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "value"
+expr = "result.value == shl(input.x, input.s)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

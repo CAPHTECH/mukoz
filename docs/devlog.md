@@ -16,3 +16,5 @@
 | 2026-10-04 | E1 | 式言語に `count` を追加、`ite` を遅延評価に変更(選ばれない側の0除算で INCONCLUSIVE になっていた)。`cargo test --bin` だけでは `target/debug/mukoz` が更新されず、古いバイナリで判定していたことに気付いた |
 | 2026-10-04 | E1 | 比較試験の8課題(abs_diff, smax, popcount, sat_add_u32, fill, count_byte, reverse, checked_mul)。Mukoz: 参照実装8 ACCEPT、変異8 REJECT。reverse の最初の変異は等価変異だったので差し替え(1回) |
 | 2026-10-04 | E1 | 隠し判定(C ランナー: fork + seccomp strict + guard page + canary + callee-saved 番兵、Python 参照実装): 参照実装8 PASS、変異8 FAIL(各1,500ケース、1回) |
+| 2026-10-04 | 4 | 比較試験 第1群(abs_diff, fill, popcount, checked_mul × 条件A/B、各1回): 8件とも1回目で完成、隠し判定 PASS、Mukoz判定も ACCEPT。難易度が低く条件差は出ない |
+| 2026-10-04 | E1 | 生成器に `max`(上限式)と依存順の並べ替えを追加。難課題4つ(memmove 重なりあり、hex_encode、shl_var、isqrt)を追加: Mukoz で参照 ACCEPT・変異 REJECT、隠し判定で参照 PASS・変異 FAIL(各1回)。memmove の戻り値はアドレスで契約(ISA非依存)に書けないため要件から外した |

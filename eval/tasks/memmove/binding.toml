@@ -1,0 +1,22 @@
+schema = "mukoz.binding/1"
+id = "task.memmove@x86_64-sysv"
+contract = "task.memmove"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "addr(buf) + input.doff"
+rsi = "addr(buf) + input.soff"
+rdx = "input.n"
+
+[regions.buf]
+size = "len(before.buf)"
+init = "before.buf"
+access = "rw"
+observe_as = "after.buf"
+
+[completion]
+kind = "return_to_sentinel"

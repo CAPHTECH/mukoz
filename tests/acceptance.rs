@@ -138,3 +138,50 @@ fn narrow_arguments_have_unspecified_upper_bits() {
     assert_eq!(admission(&v), "REJECT");
     assert!(violated(&v).contains(&"arith.zext32/zero_extended".to_string()));
 }
+
+// I2: a counterexample replayed against a changed artifact is reported as a
+// regression check on a different subject, not as the original verdict.
+#[test]
+fn i2_replay_on_changed_artifact_is_marked() {
+    let store = tempdir();
+    let out = Command::new(env!("CARGO_BIN_EXE_mukoz"))
+        .args(["check", ADD, "--artifact", &fx("add64_mut_sub"), "--store", &store, "--fail-fast"])
+        .output()
+        .unwrap();
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cx = v["data"]["findings"][0]["counterexample_id"].as_str().unwrap().to_string();
+    let out = Command::new(env!("CARGO_BIN_EXE_mukoz"))
+        .args(["replay", &cx, "--artifact", &fx("add64"), "--store", &store])
+        .output()
+        .unwrap();
+    let r: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(r["data"]["same_artifact_contract_binding"], false);
+    assert_eq!(r["data"]["property_now"], "SATISFIED_IN_SCOPE");
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn gate_exit_codes_only_with_flag() {
+    let store = tempdir();
+    let run = |art: &str, gate: bool| {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_mukoz"));
+        c.args(["check", ADD, "--artifact", art, "--store", &store, "--fail-fast"]);
+        if gate {
+            c.arg("--gate");
+        }
+        c.output().unwrap().status.code().unwrap()
+    };
+    assert_eq!(run(&fx("add64_mut_sub"), false), 0);
+    assert_eq!(run(&fx("add64_mut_sub"), true), 11);
+    assert_eq!(run(&fx("add64_mut_loop"), true), 10);
+    assert_eq!(run(&fx("add64"), true), 0);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn missing_artifact_is_a_usage_error() {
+    let out = Command::new(env!("CARGO_BIN_EXE_mukoz")).args(["check", "eval/tasks/smax/suite.toml", "--store", &tempdir()]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], false);
+}

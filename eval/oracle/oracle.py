@@ -102,6 +102,36 @@ def t_checked_mul(rng):
         return None
     return [old.to_bytes(8, "little")], [a, b, "p0"], check
 
+def t_memmove(rng):
+    L = rng.choice([0, 1, 2, 8, 64, 128, rng.randrange(0, 129)])
+    buf = rbytes(rng, L)
+    n = rng.choice([0, L, rng.randrange(0, L + 1)])
+    doff = rng.randrange(0, L - n + 1); soff = rng.randrange(0, L - n + 1)
+    if rng.random() < 0.4 and L - n >= 1:
+        soff = rng.randrange(0, L - n + 1); doff = min(L - n, soff + rng.randrange(0, 4))
+    want = bytearray(buf); want[doff:doff + n] = buf[soff:soff + n]
+    return [buf], [f"p0+{doff}", f"p0+{soff}", n], \
+        lambda r: None if r["bufs"][0] == bytes(want) else f"buf wrong (L={L}, n={n}, doff={doff}, soff={soff})"
+
+def t_hex_encode(rng):
+    n = rng.choice([0, 1, 2, 128, rng.randrange(0, 129)])
+    src = rbytes(rng, n); dst = rbytes(rng, 2 * n)
+    want = src.hex().encode()
+    return [dst, src], ["p0", "p1", n], lambda r: None if r["bufs"][0] == want else f"dst wrong (n={n})"
+
+def t_shl_var(rng):
+    x = interesting(rng, 64)
+    s = rng.choice([0, 1, 31, 32, 63, 64, 65, 127, 128, 255, 256, 1 << 32, (1 << 64) - 1, rng.randrange(0, 64), rng.getrandbits(64), rng.randrange(64, 512)])
+    want = (x << s) & M64 if s < 64 else 0
+    return [], [x, s], lambda r: None if r["rax"] == want else f"rax={r['rax']:#x} want {want:#x} (x={x:#x}, s={s})"
+
+def t_isqrt(rng):
+    import math
+    r0 = rng.getrandbits(32)
+    x = rng.choice([interesting(rng, 64), r0 * r0, max(r0 * r0 - 1, 0), (r0 * r0 + 2 * r0) & M64, rng.getrandbits(64)])
+    want = math.isqrt(x)
+    return [], [x], lambda r: None if r["rax"] == want else f"rax={r['rax']} want {want} (x={x:#x})"
+
 TASKS = {k[2:]: v for k, v in globals().items() if k.startswith("t_")}
 
 def judge(task, binary, cases=2000, seed=None):

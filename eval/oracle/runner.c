@@ -66,7 +66,10 @@ static void run_case(char *line, int wfd) {
   uint64_t args[6] = {0};
   for (int a = 0; a < nargs && a < 6; a++) {
     tok = strtok_r(NULL, " \n", &save);
-    if (tok[0] == 'p') args[a] = (uint64_t)(uintptr_t)bufs[atoi(tok + 1)];
+    if (tok[0] == 'p') {
+      char *plus = strchr(tok, '+');
+      args[a] = (uint64_t)(uintptr_t)bufs[atoi(tok + 1)] + (plus ? strtoull(plus + 1, NULL, 10) : 0);
+    }
     else args[a] = strtoull(tok + 1, NULL, 16);
   }
   unsigned char *c = mmap(NULL, (code_len + 4095) / 4096 * 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

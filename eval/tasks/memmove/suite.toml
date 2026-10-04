@@ -1,0 +1,20 @@
+schema = "mukoz.suite/1"
+id = "task.memmove"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "memmove"
+random_cases = 1024
+
+[generate.vars.n]
+max = "len(before.buf)"
+
+[generate.vars.doff]
+max = "len(before.buf) - input.n"
+
+[generate.vars.soff]
+max = "len(before.buf) - input.n"
+
+[limits]
+instructions_per_case = 200000

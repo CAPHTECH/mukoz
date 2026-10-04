@@ -1,0 +1,14 @@
+schema = "mukoz.suite/1"
+id = "task.shl_var"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "shl_var"
+random_cases = 1024
+
+[generate.vars.s]
+values = ["3", "31", "32", "63", "64", "65", "127", "128", "256", "0x100000000"]
+
+[limits]
+instructions_per_case = 200000

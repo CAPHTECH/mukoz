@@ -1,0 +1,14 @@
+schema = "mukoz.suite/1"
+id = "task.hex_encode"
+contract = "contract.toml"
+binding = "binding.toml"
+
+[generate]
+seed = "hex_encode"
+random_cases = 1024
+
+[generate.vars.dst]
+len = "len(input.src) + len(input.src)"
+
+[limits]
+instructions_per_case = 200000

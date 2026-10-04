@@ -221,6 +221,149 @@ observe_as = "after.out"
 ''')
 
 
+T["memmove"] = dict(
+ spec="void memmove_(uint8_t *dst, const uint8_t *src, uint64_t n): copy n bytes from src to dst; the two ranges may overlap (both lie inside one buffer); the result must be as if the bytes were first copied to a temporary buffer. No return value.",
+ modifies='modifies = ["buf"]',
+ contract='''
+[inputs]
+n = "bv64"
+doff = "bv64"
+soff = "bv64"
+
+[state]
+buf = { type = "bytes", max_len = 128 }
+
+[[requires]]
+id = "in_bounds"
+expr = "ule(input.n, len(before.buf)) and ule(input.doff, len(before.buf) - input.n) and ule(input.soff, len(before.buf) - input.n)"
+
+[[ensures]]
+id = "moved"
+expr = "after.buf == concat(concat(slice(before.buf, bv64(0), input.doff), slice(before.buf, input.soff, input.n)), slice(before.buf, input.doff + input.n, len(before.buf) - input.doff - input.n))"
+''',
+ binding='''
+[arguments]
+rdi = "addr(buf) + input.doff"
+rsi = "addr(buf) + input.soff"
+rdx = "input.n"
+
+[regions.buf]
+size = "len(before.buf)"
+init = "before.buf"
+access = "rw"
+observe_as = "after.buf"
+''',
+ suite_extra='''
+[generate.vars.n]
+max = "len(before.buf)"
+
+[generate.vars.doff]
+max = "len(before.buf) - input.n"
+
+[generate.vars.soff]
+max = "len(before.buf) - input.n"
+''')
+
+T["hex_encode"] = dict(
+ spec="void hex_encode(uint8_t *dst, const uint8_t *src, uint64_t n): write the lowercase hexadecimal form of src[0..n) to dst[0..2n): dst[2i] is the high nibble digit and dst[2i+1] the low nibble digit of src[i] ('0'-'9','a'-'f'). dst points to exactly 2n writable bytes, src to n readable bytes.",
+ modifies='modifies = ["dst"]',
+ contract='''
+[inputs]
+src = { type = "bytes", max_len = 128 }
+
+[state]
+dst = { type = "bytes", max_len = 256 }
+
+[[requires]]
+id = "dst_len"
+expr = "len(before.dst) == len(input.src) + len(input.src)"
+
+[[ensures]]
+id = "high_digits"
+expr = "forall i in bv64(0)..len(input.src): after.dst[i + i] == ite(ult(lshr(input.src[i], bv8(4)), bv8(10)), lshr(input.src[i], bv8(4)) + bv8(0x30), lshr(input.src[i], bv8(4)) + bv8(0x57))"
+
+[[ensures]]
+id = "low_digits"
+expr = "forall i in bv64(0)..len(input.src): after.dst[i + i + bv64(1)] == ite(ult(input.src[i] & bv8(0x0f), bv8(10)), (input.src[i] & bv8(0x0f)) + bv8(0x30), (input.src[i] & bv8(0x0f)) + bv8(0x57))"
+
+[[ensures]]
+id = "length"
+expr = "len(after.dst) == len(before.dst)"
+''',
+ binding='''
+[arguments]
+rdi = "addr(dst)"
+rsi = "addr(src)"
+rdx = "len(input.src)"
+
+[regions.dst]
+size = "len(before.dst)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+[regions.src]
+size = "len(input.src)"
+init = "input.src"
+access = "r"
+''',
+ suite_extra='''
+[generate.vars.dst]
+len = "len(input.src) + len(input.src)"
+''')
+
+T["shl_var"] = dict(
+ spec="uint64_t shl_var(uint64_t x, uint64_t s): return x shifted left by s bits as a mathematical operation on 64-bit values: the result is 0 when s >= 64 (s is a full 64-bit value).",
+ contract='''
+[inputs]
+x = "bv64"
+s = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "value"
+expr = "result.value == shl(input.x, input.s)"
+''',
+ binding='''
+[arguments]
+rdi = "input.x"
+rsi = "input.s"
+
+[results]
+value = "rax"
+''',
+ suite_extra='''
+[generate.vars.s]
+values = ["3", "31", "32", "63", "64", "65", "127", "128", "256", "0x100000000"]
+''')
+
+T["isqrt"] = dict(
+ spec="uint64_t isqrt(uint64_t x): return floor(sqrt(x)) for an unsigned 64-bit x, i.e. the largest r with r*r <= x.",
+ contract='''
+[inputs]
+x = "bv64"
+
+[results]
+value = "bv64"
+
+[[ensures]]
+id = "floor_sqrt"
+expr = "ult(result.value, bv64(0x100000000)) and ule(result.value * result.value, input.x) and ite(result.value == bv64(0xffffffff), true, ult(input.x, (result.value + bv64(1)) * (result.value + bv64(1))))"
+''',
+ binding='''
+[arguments]
+rdi = "input.x"
+
+[results]
+value = "rax"
+''',
+ suite_extra='''
+[generate.vars.x]
+values = ["3", "4", "15", "16", "17", "0xfffffffe00000001", "0xfffffffe00000000", "0x3fffffffffffffff", "0x4000000000000000", "1000000"]
+''')
+
 for name, t in T.items():
     d = os.path.join("tasks", name)
     os.makedirs(d, exist_ok=True)
@@ -235,5 +378,5 @@ for name, t in T.items():
                 '[entry]\nkind = "raw_offset"\noffset = 0\n' + t["binding"] + '\n[completion]\nkind = "return_to_sentinel"\n')
     with open(os.path.join(d, "suite.toml"), "w") as f:
         f.write(f'schema = "mukoz.suite/1"\nid = "task.{name}"\ncontract = "contract.toml"\nbinding = "binding.toml"\n\n'
-                f'[generate]\nseed = "{name}"\nrandom_cases = 1024\n\n[limits]\ninstructions_per_case = 200000\n')
+                f'[generate]\nseed = "{name}"\nrandom_cases = 1024\n' + t.get("suite_extra", "") + '\n[limits]\ninstructions_per_case = 200000\n')
 print("ok", sorted(T))

@@ -1,0 +1,31 @@
+schema = "mukoz.contract/1"
+id = "task.hex_encode"
+boundary = "routine"
+modifies = ["dst"]
+[inputs]
+src = { type = "bytes", max_len = 128 }
+
+[state]
+dst = { type = "bytes", max_len = 256 }
+
+[[requires]]
+id = "dst_len"
+expr = "len(before.dst) == len(input.src) + len(input.src)"
+
+[[ensures]]
+id = "high_digits"
+expr = "forall i in bv64(0)..len(input.src): after.dst[i + i] == ite(ult(lshr(input.src[i], bv8(4)), bv8(10)), lshr(input.src[i], bv8(4)) + bv8(0x30), lshr(input.src[i], bv8(4)) + bv8(0x57))"
+
+[[ensures]]
+id = "low_digits"
+expr = "forall i in bv64(0)..len(input.src): after.dst[i + i + bv64(1)] == ite(ult(input.src[i] & bv8(0x0f), bv8(10)), (input.src[i] & bv8(0x0f)) + bv8(0x30), (input.src[i] & bv8(0x0f)) + bv8(0x57))"
+
+[[ensures]]
+id = "length"
+expr = "len(after.dst) == len(before.dst)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

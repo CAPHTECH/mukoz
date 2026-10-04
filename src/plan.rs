@@ -80,7 +80,52 @@ fn slots(contract: &Contract, suite: &Suite) -> Result<Vec<VarSlot>> {
             bail!("generate.vars.{k}: no such input or state variable");
         }
     }
-    Ok(out)
+    // Order slots so that variables referenced by `len`/`max` come first.
+    let deps = |s: &VarSlot| -> Result<Vec<String>> {
+        let mut d = Vec::new();
+        for src in [&s.generator.len, &s.generator.max].into_iter().flatten() {
+            let e = expr::parse(src).map_err(|m| anyhow!("generate.vars.{}: {m}", s.name))?;
+            collect_paths(&e, &mut d);
+        }
+        Ok(d)
+    };
+    let mut ordered: Vec<VarSlot> = Vec::new();
+    let mut pending = out;
+    while !pending.is_empty() {
+        let before = pending.len();
+        let mut i = 0;
+        while i < pending.len() {
+            let d = deps(&pending[i])?;
+            if d.iter().all(|k| ordered.iter().any(|o| &o.key == k) || !pending.iter().any(|p| &p.key == k)) {
+                ordered.push(pending.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        if pending.len() == before {
+            bail!("generate.vars: circular dependency among {:?}", pending.iter().map(|p| &p.name).collect::<Vec<_>>());
+        }
+    }
+    Ok(ordered)
+}
+
+fn collect_paths(e: &expr::Expr, out: &mut Vec<String>) {
+    use expr::Expr::*;
+    match e {
+        Path(p) => out.push(p.join(".")),
+        Lit(_) | Int(_) => {}
+        Unary(_, a) => collect_paths(a, out),
+        Binary(_, a, b) | Index(a, b) => {
+            collect_paths(a, out);
+            collect_paths(b, out);
+        }
+        Call(_, args) => args.iter().for_each(|a| collect_paths(a, out)),
+        Forall(_, a, b, c) | Count(_, a, b, c) => {
+            collect_paths(a, out);
+            collect_paths(b, out);
+            collect_paths(c, out);
+        }
+    }
 }
 
 pub fn bv_boundaries(w: u8) -> Vec<u64> {
@@ -135,6 +180,17 @@ fn random_bytes(rng: &mut SplitMix64, len: u64, alphabet: Option<&str>) -> Vec<u
         .collect()
 }
 
+fn eval_max(slot: &VarSlot, env: &ValEnv) -> Result<Option<u64>> {
+    let Some(src) = &slot.generator.max else { return Ok(None) };
+    let e = expr::parse(src).map_err(|m| anyhow!("generate.vars.{}.max: {m}", slot.name))?;
+    let empty = BTreeMap::new();
+    match expr::eval(&e, &EvalCtx { vars: env, region_addrs: &empty }) {
+        Ok(Value::Bv(_, n)) => Ok(Some(n)),
+        Ok(v) => bail!("generate.vars.{}.max must be a bitvector, got {}", slot.name, v.ty()),
+        Err(m) => bail!("generate.vars.{}.max: {m}", slot.name),
+    }
+}
+
 fn eval_len(slot: &VarSlot, env: &ValEnv) -> Result<Option<u64>> {
     let Some(src) = &slot.generator.len else { return Ok(None) };
     let e = expr::parse(src).map_err(|m| anyhow!("generate.vars.{}.len: {m}", slot.name))?;
@@ -151,10 +207,19 @@ fn candidates(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Vec<
     match slot.vt.ty {
         Ty::Bool => Ok(vec![Value::Bool(false), Value::Bool(true)]),
         Ty::Bv(w) => {
-            let mut v: Vec<u64> = bv_boundaries(w);
+            let max = eval_max(slot, env)?;
+            let mut v: Vec<u64> = match max {
+                Some(m) => {
+                    let mut c = vec![0, 1, m / 2, m.saturating_sub(1), m];
+                    c.retain(|x| *x <= m);
+                    c.dedup();
+                    c
+                }
+                None => bv_boundaries(w),
+            };
             for s in &slot.generator.values {
                 let x = parse_bv_literal(s, w).map_err(|e| anyhow!("generate.vars.{}.values: {e}", slot.name))?;
-                if !v.contains(&x) {
+                if !v.contains(&x) && max.is_none_or(|m| x <= m) {
                     v.push(x);
                 }
             }
@@ -189,7 +254,10 @@ fn candidates(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Vec<
 fn random_value(slot: &VarSlot, env: &ValEnv, rng: &mut SplitMix64) -> Result<Value> {
     Ok(match slot.vt.ty {
         Ty::Bool => Value::Bool(rng.below(2) == 1),
-        Ty::Bv(w) => Value::Bv(w, random_bv(rng, w)),
+        Ty::Bv(w) => match eval_max(slot, env)? {
+            Some(m) => Value::Bv(w, if m == u64::MAX { rng.next() } else { rng.below(m + 1) } & mask(w)),
+            None => Value::Bv(w, random_bv(rng, w)),
+        },
         Ty::Bytes => {
             let n = match eval_len(slot, env)? {
                 Some(n) => n.min(slot.vt.max_len),

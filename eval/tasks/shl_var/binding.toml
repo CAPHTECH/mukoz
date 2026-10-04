@@ -1,0 +1,18 @@
+schema = "mukoz.binding/1"
+id = "task.shl_var@x86_64-sysv"
+contract = "task.shl_var"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "input.x"
+rsi = "input.s"
+
+[results]
+value = "rax"
+
+[completion]
+kind = "return_to_sentinel"

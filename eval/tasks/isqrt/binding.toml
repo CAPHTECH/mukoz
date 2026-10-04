@@ -1,0 +1,17 @@
+schema = "mukoz.binding/1"
+id = "task.isqrt@x86_64-sysv"
+contract = "task.isqrt"
+target = "x86_64/raw/sysv-x86_64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+rdi = "input.x"
+
+[results]
+value = "rax"
+
+[completion]
+kind = "return_to_sentinel"
