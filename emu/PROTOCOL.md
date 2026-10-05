@@ -14,7 +14,7 @@ Registers are named: x86-64 `rax rbx rcx rdx rsi rdi rbp rsp r8`–`r15 rip rfla
 
 | Client sends | Emulator answers |
 |---|---|
-| `{"op":"hello"}` | `{"protocol":"mukoz-emu/1","engine":"<engine and version>","version":"<mukoz-emu version>"}` |
+| `{"op":"hello"}` | `{"protocol":"mukoz-emu/1","program":"<program name>","engine":"<engine and version>","version":"<program version>"}` |
 | `{"op":"run", …}` | events (below), ending with `{"event":"end", …}` or `{"event":"setup_error","error":…}` |
 | `{"op":"quit"}` | exits. End of input also ends the program. |
 

@@ -33,7 +33,8 @@ What works on a Linux x86-64 host:
 - **Targets:** x86-64 and AArch64 machine-code routines (SysV, AAPCS64, Apple arm64 ABI), static
   Linux ELF processes (x86-64, AArch64), Mach-O arm64 executables (`darwin-stdio/1`), functions of
   ELF relocatable objects, and programs split into modules (link files with boundary monitors).
-- **Executors:** `emulated` (Unicorn 2.1.1 in the separate program `mukoz-emu`, qualified per host by known-answer tests),
+- **Executors:** `emulated` (a separate emulator program, qualified per host by known-answer tests:
+  `mukoz-emu` with Unicorn 2.1.1, or `mukoz-emu-icicle` with icicle-emu),
   `native-routine` and `native-process` (the real CPU and kernel, inside a sandbox, only where an
   owner policy allows), and differential tests between emulated and native execution.
 - **Commands:** `check`, `show`, `replay`, `shrink`, `inspect`, `regressions`, `platform`, `expr check`.
@@ -45,15 +46,25 @@ lists the implemented contract language exactly.
 ## Build
 
 Requirements: Rust 1.97.1 (pinned in `rust-toolchain.toml`), CMake and a C compiler (Unicorn and
-Capstone are built from source).
+Capstone are built from source), and network access for the first build (icicle-emu is a git
+dependency pinned to one commit).
 
 ```sh
-cargo build --release      # target/release/mukoz and target/release/mukoz-emu
+cargo build --release      # target/release/mukoz, mukoz-emu and mukoz-emu-icicle
 ```
 
 `mukoz` runs the emulator as a separate program, `mukoz-emu`, found next to the `mukoz`
-executable (or at `$MUKOZ_EMU`). Without it, emulated results are `HOLD`
-(`ENGINE_NOT_QUALIFIED: EMULATOR_UNAVAILABLE`); native executors still work.
+executable, or the program at `$MUKOZ_EMU`. Two programs implement the protocol:
+
+| Program | Engine | License |
+|---|---|---|
+| `mukoz-emu` ([emu/](emu/)) | Unicorn 2.1.1 (QEMU-derived) | GPL-2.0-or-later |
+| `mukoz-emu-icicle` ([emu-icicle/](emu-icicle/)) | icicle-emu (SLEIGH / p-code interpreter) | MIT OR Apache-2.0 |
+
+Use `MUKOZ_EMU=target/release/mukoz-emu-icicle` to select the second one. The engine
+qualification and every subject context record which engine ran. Without an emulator program,
+emulated results are `HOLD` (`ENGINE_NOT_QUALIFIED: EMULATOR_UNAVAILABLE`); native executors
+still work.
 
 `--no-default-features` builds without Capstone; only `show --disasm` changes.
 
@@ -94,6 +105,7 @@ back from one executor to another. Read [docs/08](docs/08-security.md) before en
 cargo test --release          # unit, acceptance, negative and self-check tests
 python3 tools/tier1.py        # the Tier 1 acceptance criteria, written to target/tier1-report.json
 python3 selfcheck/run.py      # self-check stages 1–3 (docs/09 §9.6)
+MUKOZ_EMU=$PWD/target/release/mukoz-emu-icicle cargo test --release   # the same tests on icicle-emu
 ```
 
 ## Documentation
@@ -112,4 +124,8 @@ option.
 ([emu/LICENSE](emu/LICENSE)). It is a separate program: `mukoz` starts it as a child process and
 talks to it over a documented line protocol ([emu/PROTOCOL.md](emu/PROTOCOL.md)); neither links
 the other.
+
+`mukoz-emu-icicle` ([emu-icicle/](emu-icicle/)) is MIT OR Apache-2.0, like `mukoz`. It embeds
+Ghidra processor specifications under the Apache License 2.0 ([emu-icicle/sleigh/LICENSE](emu-icicle/sleigh/LICENSE),
+[emu-icicle/sleigh/NOTICE](emu-icicle/sleigh/NOTICE)). Using it involves no GPL code at all.
 

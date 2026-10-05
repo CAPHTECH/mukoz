@@ -168,7 +168,7 @@ impl Platform {
             "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         });
         if self.executors.iter().any(|e| e == "emulated") {
-            v["emulated"] = json!({ "engine": emu::engine_id(), "process_isolation": "separate process (mukoz-emu, protocol mukoz-emu/1)" });
+            v["emulated"] = json!({ "engine": emu::engine_id(), "process_isolation": "separate process (protocol mukoz-emu/1)" });
         }
         if let Some(n) = &self.native {
             v[n.as_str()] = match &self.native_state {
@@ -647,9 +647,6 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
     let completed = per_case.len();
     let failed_cases = per_case.iter().filter(|(_, c)| c.iter().any(|x| x.eval == Eval::Violated)).count();
     let mut limitations = vec!["enumerated_cases_not_exhaustive".to_string()];
-    if emulated {
-        limitations.push("engine_runs_in_process".into());
-    }
     match (&platform.native, platform.native_ok()) {
         (None, _) => limitations.push("emulated_only_not_native_execution".into()),
         (Some(n), false) => limitations.push(format!("{n}_not_run")),

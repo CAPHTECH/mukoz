@@ -116,6 +116,7 @@ Run the same case on multiple Executors and hosts and compare the observations.
 
 - Agreement does not prove the correctness of either side.
 - Unicorn derives from QEMU, so do not treat agreement between Unicorn and QEMU (qemu-user) as agreement between two independent implementations.
+- icicle-emu (`mukoz-emu-icicle`) shares no code with Unicorn or QEMU. Its instruction semantics come from Ghidra's SLEIGH specifications. A comparison of the two emulator programs is not implemented as a differential test yet `[U]`.
 - The cause of a mismatch (subject, Binding, ABI, effect model, engine) is unknown, so first return `BACKEND_DIVERGENCE` / `PLATFORM_DIVERGENCE` together with whatever evidence can be examined.
 
 ## 6.9 Checker independence

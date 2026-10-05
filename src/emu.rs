@@ -131,7 +131,7 @@ impl Remote {
         if h["protocol"] != PROTOCOL {
             return Err(format!("EMULATOR_UNAVAILABLE: `{}` does not speak {PROTOCOL} (got {h})", path.display()));
         }
-        r.engine = format!("{} via mukoz-emu {}", h["engine"].as_str().unwrap_or("?"), h["version"].as_str().unwrap_or("?"));
+        r.engine = format!("{} via {} {}", h["engine"].as_str().unwrap_or("?"), h["program"].as_str().unwrap_or("mukoz-emu"), h["version"].as_str().unwrap_or("?"));
         Ok(r)
     }
     fn send(&mut self, v: &J) {

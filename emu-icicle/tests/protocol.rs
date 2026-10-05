@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The mukoz-emu/1 protocol end to end: handshake, one run with a breakpoint event, reads after
 //! the run, and an access outside the allowed ranges.
 
@@ -23,7 +23,7 @@ impl P {
 }
 
 fn start() -> P {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_mukoz-emu")).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_mukoz-emu-icicle")).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     P { tx: c.stdin.take().unwrap(), rx: BufReader::new(c.stdout.take().unwrap()) }
 }
 

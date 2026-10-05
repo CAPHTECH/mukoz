@@ -33,7 +33,10 @@ fn both_isas_qualify_with_known_answers() {
     if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         let (v, _) = mukoz(&["platform", "qualify", "--isa", "x86_64", "--store", st.to_str().unwrap()]);
         assert_eq!(v["data"]["native_cross_check"]["passed"], true, "{:#}", v["data"]["native_cross_check"]);
-        assert_eq!(v["data"]["unsupported_by_engine"][0], "popcnt");
+        // Unicorn's default CPU model has no POPCNT; other engines may implement it.
+        if v["data"]["engine"].as_str().unwrap_or("").starts_with("unicorn") {
+            assert_eq!(v["data"]["unsupported_by_engine"][0], "popcnt");
+        }
     }
 }
 

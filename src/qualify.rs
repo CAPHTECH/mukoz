@@ -15,8 +15,9 @@ use serde_json::{Value as J, json};
 
 pub struct Test {
     pub name: &'static str,
-    /// The engine does not implement this instruction: the emulator must stop with
-    /// INVALID_INSTRUCTION (the vectors then apply to the native cross-check only).
+    /// An engine may not implement this instruction (Unicorn's default CPU model has no
+    /// POPCNT): the emulator must either stop with INVALID_INSTRUCTION or give the expected
+    /// values. A wrong value fails either way.
     pub emulated_unsupported: bool,
     pub code: &'static [u8],
     /// (a, b, expected first result register, expected second result register)
@@ -94,6 +95,7 @@ pub fn qualify(isa: Isa) -> Result<J> {
     let mut failures = Vec::new();
     let mut native_failures = Vec::new();
     let mut native_vectors = 0;
+    let mut unsupported: Vec<&str> = Vec::new();
     for t in tests {
         let image = Image::raw(t.code, 0, &[])?;
         let exec = Executor { image: &image, contract: &contract, binding: &binding, insn_limit: 100_000, timeout_ms: 1000, vary_placement: false };
@@ -101,8 +103,11 @@ pub fn qualify(isa: Isa) -> Result<J> {
             vectors += 1;
             let c = case(i, a, b);
             let obs = exec.run(&c);
-            let bad = if t.emulated_unsupported {
-                if matches!(obs.stop, Stop::InvalidInstruction { .. }) { None } else { Some(json!({ "expected_stop": "invalid_instruction", "stop": obs.stop })) }
+            let bad = if t.emulated_unsupported && matches!(obs.stop, Stop::InvalidInstruction { .. }) {
+                if !unsupported.contains(&t.name) {
+                    unsupported.push(t.name);
+                }
+                None
             } else {
                 mismatch(isa, &obs, o0, o1)
             };
@@ -136,7 +141,7 @@ pub fn qualify(isa: Isa) -> Result<J> {
         } else {
             json!({ "ran": false, "why": "the host cannot run this ISA natively" })
         },
-        "unsupported_by_engine": tests.iter().filter(|t| t.emulated_unsupported).map(|t| t.name).collect::<Vec<_>>(),
+        "unsupported_by_engine": unsupported,
         "scope": "the listed integer, flag, stack, call and loop instructions only; SIMD, floating point, atomics and system instructions are not qualified",
     }))
 }

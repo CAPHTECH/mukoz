@@ -419,7 +419,7 @@ fn main() {
     loop {
         let m = io.recv();
         match m["op"].as_str().unwrap_or("") {
-            "hello" => io.send(&json!({ "protocol": PROTOCOL, "engine": ENGINE, "version": env!("CARGO_PKG_VERSION") })),
+            "hello" => io.send(&json!({ "protocol": PROTOCOL, "program": env!("CARGO_PKG_NAME"), "engine": ENGINE, "version": env!("CARGO_PKG_VERSION") })),
             "run" => io = run(io, &m),
             "quit" => return,
             other => io.send(&json!({ "error": format!("unknown op `{other}`") })),

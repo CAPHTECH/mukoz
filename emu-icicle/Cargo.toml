@@ -1,0 +1,13 @@
+[package]
+name = "mukoz-emu-icicle"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Machine emulator process for Mukoz's emulated executor: icicle-emu behind the mukoz-emu/1 line protocol"
+publish = false
+
+[dependencies]
+# icicle-emu (MIT OR Apache-2.0) is not published on crates.io; pinned to one commit.
+icicle-vm = { git = "https://github.com/icicle-emu/icicle-emu", rev = "3292602fd4857b53ed653dec69398efe4cdb435e" }
+pcode = { git = "https://github.com/icicle-emu/icicle-emu", rev = "3292602fd4857b53ed653dec69398efe4cdb435e" }
+serde_json = "1"
