@@ -436,7 +436,8 @@ completed, not that the subject passed.
 Requirements:
 
 - Rust 1.97.1, pinned in `rust-toolchain.toml`.
-- A C compiler and CMake. Capstone, used for `show --disasm`, is built from source.
+- A C compiler. Capstone, used for `show --disasm`, is built from source. The optional Unicorn
+  emulator also needs CMake.
 - Network access for the first build. icicle-emu is a git dependency pinned to one commit.
 
 ```sh
@@ -461,7 +462,10 @@ cargo build --release -p mukoz-emu
 MUKOZ_EMU=$PWD/target/release/mukoz-emu cargo test --release --workspace --exclude mukoz-kernels
 ```
 
-Some tests run native executors. They need a Linux x86-64 host with user namespaces enabled.
+Some tests run native executors. They need a Linux x86-64 host with unprivileged user
+namespaces enabled (on Ubuntu 24.04: `sysctl kernel.apparmor_restrict_unprivileged_userns=0`).
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs all of the above on every push to
+`main`.
 
 ## Repository layout
 

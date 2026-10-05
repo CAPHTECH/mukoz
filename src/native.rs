@@ -15,7 +15,6 @@ use crate::plan::Case;
 use crate::spec::{Binding, Isa};
 use std::collections::BTreeMap;
 
-pub const EXECUTOR: &str = "native-routine";
 const PAGE: u64 = 0x1000;
 /// Trampoline context page (child-private), next to the sentinel page. Both lie in the range
 /// Mukoz reserves for itself, so no segment or region can overlap them.
@@ -95,6 +94,7 @@ std::arch::global_asm!(
 );
 
 // Context page layout (byte offsets).
+#[allow(dead_code)] // written and read by the trampoline as [0x0deaf000]
 const C_HOST_RSP: u64 = 0x00;
 const C_ENTRY: u64 = 0x08;
 const C_ENTRY_SP: u64 = 0x10;

@@ -652,7 +652,6 @@ pub fn check(o: &CheckOpts) -> Result<(serde_json::Value, Admission)> {
         (Some(n), false) => limitations.push(format!("{n}_not_run")),
         (Some(n), true) if n == "native-routine" => limitations.push("native_routine_memory_checks_page_granular_only".into()),
         (Some(_), true) => limitations.push("native_process_observes_only_streams_exit_status_and_declared_files".into()),
-        _ => {}
     }
     if native_timeouts >= NATIVE_TIMEOUT_LIMIT {
         limitations.push(format!("native_cases_stopped_after_{NATIVE_TIMEOUT_LIMIT}_timeouts"));
@@ -822,7 +821,7 @@ pub fn shrink(store: &Store, cx_id: &str, budget: usize) -> Result<serde_json::V
     let exec = Executor { image: &l.image, contract: &l.contract, binding: &l.binding, insn_limit: l.suite.limits.instructions_per_case, timeout_ms: l.suite.limits.wall_ms_per_case, vary_placement: l.suite.vary_placement };
     let mut case = case_from_item(&l, &item)?;
     let mut executions = 0usize;
-    let mut fails = |c: &Case, executions: &mut usize| -> bool {
+    let fails = |c: &Case, executions: &mut usize| -> bool {
         *executions += 1;
         let obs = exec.run(c);
         judge::judge_case(&l.contract, &l.binding, c, &obs).iter().any(|x| x.property == property && x.eval == Eval::Violated && json!(x.reason) == reason)

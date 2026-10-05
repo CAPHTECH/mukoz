@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-10-05
 
 First public version. Linux x86-64 host (Tier 1, docs/09 §9.8).
 

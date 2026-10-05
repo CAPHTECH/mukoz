@@ -15,7 +15,6 @@ use crate::spec::{Binding, Contract, Format, Isa};
 use std::collections::BTreeMap;
 use std::ffi::CString;
 
-pub const EXECUTOR: &str = "native-process";
 const DEFAULT_CAP: usize = 1 << 16;
 
 pub fn host_can_execute(binding: &Binding) -> Result<(), String> {
