@@ -15,8 +15,9 @@ First public version. Linux x86-64 host (Tier 1, docs/09 §9.8).
 - Executors: `emulated` (a separate emulator program over the protocol `mukoz-emu/1`: icicle-emu
   in `mukoz-emu-icicle` by default, or Unicorn 2.1.1 in the optional GPL program `mukoz-emu`)
   gated by a per-host engine qualification;
-  `native-routine` and `native-process` inside a probed sandbox, only within an owner's trial
-  zone; differential tests between emulated and native execution.
+  `native-routine` and `native-process` inside a probed sandbox, only where an owner's policy
+  allows (a trial zone or an explicit digest); differential tests between emulated and native
+  execution.
 - Evidence store, `show` (paged, optional disassembly), `replay`, `shrink`, `regressions`,
   `inspect`, `platform probe / show / qualify`, `expr check`; JSON output with a stable envelope.
 - Self-check (docs/09 §9.6): Mukoz's own kernels checked as routines on both ISAs, the static
