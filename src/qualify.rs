@@ -122,7 +122,7 @@ pub fn qualify(isa: Isa) -> Result<J> {
     Ok(json!({
         "schema": SCHEMA,
         "isa": isa_name(isa),
-        "engine": emu::ENGINE,
+        "engine": emu::engine_id(),
         "mukoz": crate::run::EVALUATOR_VERSION,
         "host_id": crate::host::host_id(),
         "test_set": crate::qualify_vectors::TEST_SET,
@@ -146,7 +146,7 @@ fn same_identity(q: &J, isa: Isa) -> Result<(), String> {
     let want = [
         ("schema", SCHEMA.to_string()),
         ("isa", isa_name(isa).to_string()),
-        ("engine", emu::ENGINE.to_string()),
+        ("engine", emu::engine_id()),
         ("mukoz", crate::run::EVALUATOR_VERSION.to_string()),
         ("host_id", crate::host::host_id()),
         ("test_set", crate::qualify_vectors::TEST_SET.to_string()),
@@ -178,6 +178,10 @@ pub fn valid(q: &J, isa: Isa) -> Result<(), String> {
 /// missing or outdated record is replaced by a fresh run. Returns the record, whether it was
 /// run now, and Err if the engine is not qualified.
 pub fn ensure(store: &Store, isa: Isa) -> (J, bool, Result<(), String>) {
+    // Without the engine process nothing can be qualified, and nothing is stored.
+    if let Err(e) = emu::engine() {
+        return (J::Null, false, Err(format!("ENGINE_NOT_QUALIFIED: {e}")));
+    }
     if let Some(q) = store.get_host(&record_name(isa)) {
         if same_identity(&q, isa).is_ok() {
             let v = valid(&q, isa);

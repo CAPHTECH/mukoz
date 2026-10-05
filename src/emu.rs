@@ -1,26 +1,27 @@
-//! Emulated executor on Unicorn: routines (docs/05 5.3-5.5) and Linux processes
-//! with a modeled system-call interface and boundary monitors (docs/12).
+//! Emulated executor: routines (docs/05 5.3-5.5) and Linux / Darwin processes with a modeled
+//! system-call interface and boundary monitors (docs/12).
 //!
-//! One fresh engine instance per case: re-using an instance after rewriting
-//! code was observed to execute stale translated blocks.
+//! The machine itself runs in a separate program, `mukoz-emu` (GPL-2.0-or-later, it links
+//! Unicorn), driven over the `mukoz-emu/1` line protocol (emu/PROTOCOL.md). This module builds
+//! each case's memory and registers, and answers the machine's system calls, interrupts and
+//! breakpoints with the effect model and the boundary monitors; mukoz does not link the engine.
 
 use crate::expr::{self, EvalCtx, Ty, ValEnv, Value};
 use crate::image::{DATA_BASE, Image, Monitor};
 use crate::plan::{Case, SplitMix64};
 use crate::spec::{Access, Binding, Contract, Isa};
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
-use unicorn_engine::unicorn_const::{Arch, HookType, MemType, Mode, Permission, uc_error};
-use unicorn_engine::{InsnSysX86, RegisterARM64, RegisterX86, Unicorn};
+use serde_json::{Value as J, json};
+use std::collections::BTreeMap;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Mutex;
 
-pub const ENGINE: &str = "unicorn-engine 2.1.1 (bundled C, crate pin)";
+
 pub const STACK_TOP: u64 = 0x7fff_0000;
 pub const REGION_BASE: u64 = 0x2000_0000;
 pub const REGION_STRIDE: u64 = 0x0100_0000;
 pub const SENTINEL: u64 = 0x0dea_d000;
 const PAGE: u64 = 0x1000;
-const RING: usize = 64;
 const SYSCALL_LOG: usize = 16;
 const DEFAULT_STREAM_CAP: usize = 1 << 16;
 const MAX_FDS: usize = 16;
@@ -63,55 +64,153 @@ pub fn is_arg_or_result_reg(isa: Isa, r: &str) -> bool {
     i.args.contains(&r) || i.results.contains(&r)
 }
 
-fn reg_id(isa: Isa, name: &str) -> i32 {
+fn sp_name(isa: Isa) -> &'static str {
     match isa {
-        Isa::X86_64 => {
-            let r = match name {
-                "rax" => RegisterX86::RAX,
-                "rbx" => RegisterX86::RBX,
-                "rcx" => RegisterX86::RCX,
-                "rdx" => RegisterX86::RDX,
-                "rsi" => RegisterX86::RSI,
-                "rdi" => RegisterX86::RDI,
-                "rbp" => RegisterX86::RBP,
-                "rsp" => RegisterX86::RSP,
-                "r8" => RegisterX86::R8,
-                "r9" => RegisterX86::R9,
-                "r10" => RegisterX86::R10,
-                "r11" => RegisterX86::R11,
-                "r12" => RegisterX86::R12,
-                "r13" => RegisterX86::R13,
-                "r14" => RegisterX86::R14,
-                "r15" => RegisterX86::R15,
-                "rflags" => RegisterX86::RFLAGS,
-                _ => panic!("unknown x86 register {name}"),
-            };
-            r.into()
-        }
-        Isa::Aarch64 => {
-            let r = match name {
-                "sp" => RegisterARM64::SP,
-                "x29" => RegisterARM64::X29,
-                "x30" => RegisterARM64::X30,
-                _ => {
-                    let n: i32 = name.strip_prefix('x').and_then(|n| n.parse().ok()).expect("aarch64 register");
-                    let x0: i32 = RegisterARM64::X0.into();
-                    // X0..X28 are contiguous in Unicorn's enum.
-                    assert!(n <= 28);
-                    return x0 + n;
-                }
-            };
-            r.into()
-        }
+        Isa::X86_64 => "rsp",
+        Isa::Aarch64 => "sp",
     }
 }
 
-fn sp_id(isa: Isa) -> i32 {
-    match isa {
-        Isa::X86_64 => RegisterX86::RSP.into(),
-        Isa::Aarch64 => RegisterARM64::SP.into(),
+// ---------------------------------------------------------------- the engine process
+
+/// The registers and memory of the machine running a case.
+pub trait Machine {
+    fn regs(&mut self, names: &[&str]) -> BTreeMap<String, u64>;
+    fn reg(&mut self, name: &str) -> u64 {
+        self.regs(&[name]).get(name).copied().unwrap_or(0)
+    }
+    fn set_reg(&mut self, name: &str, v: u64);
+    fn read(&mut self, addr: u64, len: usize) -> Result<Vec<u8>, ()>;
+    fn write(&mut self, addr: u64, data: &[u8]) -> Result<(), ()>;
+}
+
+/// A running `mukoz-emu` process. A broken pipe or an unexpected reply marks it broken; the
+/// case then ends as ENGINE_ERROR and the next case starts a new process.
+struct Remote {
+    child: Child,
+    tx: ChildStdin,
+    rx: BufReader<ChildStdout>,
+    engine: String,
+    broken: Option<String>,
+}
+
+impl Drop for Remote {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
+
+/// Where `mukoz-emu` is: $MUKOZ_EMU, else next to the running mukoz, else on PATH.
+fn helper_path() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("MUKOZ_EMU") {
+        return p.into();
+    }
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())) {
+        let p = dir.join("mukoz-emu");
+        if p.exists() {
+            return p;
+        }
+    }
+    "mukoz-emu".into()
+}
+
+impl Remote {
+    fn spawn() -> Result<Remote, String> {
+        let path = helper_path();
+        let mut child = Command::new(&path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|e| format!("EMULATOR_UNAVAILABLE: cannot start `{}` ({e}); build it (`cargo build --release` builds mukoz and mukoz-emu) and keep it next to mukoz, or set MUKOZ_EMU", path.display()))?;
+        let tx = child.stdin.take().ok_or("EMULATOR_UNAVAILABLE: no stdin")?;
+        let rx = BufReader::new(child.stdout.take().ok_or("EMULATOR_UNAVAILABLE: no stdout")?);
+        let mut r = Remote { child, tx, rx, engine: String::new(), broken: None };
+        let h = r.call(&json!({ "op": "hello" }));
+        if h["protocol"] != PROTOCOL {
+            return Err(format!("EMULATOR_UNAVAILABLE: `{}` does not speak {PROTOCOL} (got {h})", path.display()));
+        }
+        r.engine = format!("{} via mukoz-emu {}", h["engine"].as_str().unwrap_or("?"), h["version"].as_str().unwrap_or("?"));
+        Ok(r)
+    }
+    fn send(&mut self, v: &J) {
+        if self.broken.is_some() {
+            return;
+        }
+        let mut s = v.to_string();
+        s.push('\n');
+        if let Err(e) = self.tx.write_all(s.as_bytes()).and_then(|_| self.tx.flush()) {
+            self.broken = Some(format!("mukoz-emu: write failed: {e}"));
+        }
+    }
+    fn recv(&mut self) -> J {
+        if self.broken.is_some() {
+            return J::Null;
+        }
+        let mut line = String::new();
+        match self.rx.read_line(&mut line) {
+            Ok(0) => {
+                self.broken = Some("mukoz-emu exited".into());
+                J::Null
+            }
+            Err(e) => {
+                self.broken = Some(format!("mukoz-emu: read failed: {e}"));
+                J::Null
+            }
+            Ok(_) => serde_json::from_str(&line).unwrap_or_else(|e| {
+                self.broken = Some(format!("mukoz-emu: bad reply: {e}"));
+                J::Null
+            }),
+        }
+    }
+    fn call(&mut self, v: &J) -> J {
+        self.send(v);
+        self.recv()
+    }
+}
+
+impl Machine for Remote {
+    fn regs(&mut self, names: &[&str]) -> BTreeMap<String, u64> {
+        let r = self.call(&json!({ "op": "reg_read", "names": names }));
+        r["regs"].as_object().map(|m| m.iter().map(|(k, v)| (k.clone(), v.as_u64().unwrap_or(0))).collect()).unwrap_or_default()
+    }
+    fn set_reg(&mut self, name: &str, v: u64) {
+        let _ = self.call(&json!({ "op": "reg_write", "regs": { name: v } }));
+    }
+    fn read(&mut self, addr: u64, len: usize) -> Result<Vec<u8>, ()> {
+        let r = self.call(&json!({ "op": "mem_read", "addr": addr, "len": len }));
+        r["hex"].as_str().and_then(expr::unhex).ok_or(())
+    }
+    fn write(&mut self, addr: u64, data: &[u8]) -> Result<(), ()> {
+        let r = self.call(&json!({ "op": "mem_write", "addr": addr, "hex": expr::hex(data) }));
+        if r["ok"] == true { Ok(()) } else { Err(()) }
+    }
+}
+
+pub const PROTOCOL: &str = "mukoz-emu/1";
+static REMOTE: Mutex<Option<Remote>> = Mutex::new(None);
+static ENGINE_ID: std::sync::OnceLock<Result<String, String>> = std::sync::OnceLock::new();
+
+/// The engine behind `emulated`, as `mukoz-emu` reports it (part of the subject context and of
+/// the engine qualification's identity), or why it is unavailable.
+pub fn engine() -> Result<String, String> {
+    ENGINE_ID
+        .get_or_init(|| {
+            let mut g = REMOTE.lock().unwrap_or_else(|p| p.into_inner());
+            if g.is_none() {
+                *g = Some(Remote::spawn()?);
+            }
+            Ok(g.as_ref().unwrap().engine.clone())
+        })
+        .clone()
+}
+
+/// `engine()` for places that only record it.
+pub fn engine_id() -> String {
+    engine().unwrap_or_else(|e| format!("unavailable ({})", e.split(':').next().unwrap_or("")))
+}
+
 
 // ---------------------------------------------------------------- results
 
@@ -284,8 +383,6 @@ fn neg(e: u64) -> u64 {
     (-(e as i64)) as u64
 }
 
-type Allowed = Rc<Vec<(u64, u64, bool, bool, String)>>;
-
 fn range_ok(allowed: &[(u64, u64, bool, bool, String)], addr: u64, len: u64, write: bool) -> bool {
     if len == 0 {
         return true;
@@ -331,25 +428,26 @@ fn eval_conds(conds: &[crate::spec::Cond], env: &ValEnv) -> Vec<(String, Result<
         })
         .collect()
 }
-
-fn monitor_enter(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, idx: usize, ms: &mut MonState, loc: &dyn Fn(u64) -> String) {
+fn monitor_enter(mc: &mut dyn Machine, isa: Isa, m: &Monitor, idx: usize, ms: &mut MonState, loc: &dyn Fn(u64) -> String, sp: u64) -> Option<u64> {
     // Return address and the stack pointer expected after the return.
-    let sp = uc.reg_read(sp_id(isa)).unwrap_or(0);
     let (ret, sp_after) = match isa {
         Isa::X86_64 => {
-            let mut b = [0u8; 8];
-            let _ = uc.mem_read(sp, &mut b);
-            (u64::from_le_bytes(b), sp + 8)
+            let b = mc.read(sp, 8).unwrap_or_else(|_| vec![0; 8]);
+            (u64::from_le_bytes(b[..8].try_into().unwrap()), sp + 8)
         }
-        Isa::Aarch64 => (uc.reg_read(RegisterARM64::X30).unwrap_or(0), sp),
+        Isa::Aarch64 => (mc.reg("x30"), sp),
     };
     let st = ms.stats.entry(m.symbol.clone()).or_default();
     st.calls += 1;
     let mut env = ValEnv::new();
     let mut lens: BTreeMap<String, u64> = BTreeMap::new();
     let mut addrs: BTreeMap<String, u64> = BTreeMap::new();
+    let callee_saved = isa_info(isa).callee_saved;
+    let mut names: Vec<&str> = m.args.iter().map(|(r, _)| r.as_str()).collect();
+    names.extend_from_slice(callee_saved);
+    let rv = mc.regs(&names);
     for (reg, src) in &m.args {
-        let v = uc.reg_read(reg_id(isa, reg)).unwrap_or(0);
+        let v = rv.get(reg).copied().unwrap_or(0);
         match src {
             crate::image::ArgSrc::Value(k, Ty::Bv(w)) => {
                 env.insert(k.clone(), Value::bv(*w, v));
@@ -376,7 +474,7 @@ fn monitor_enter(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, idx: usize, ms: &m
                 other => {
                     st.inconclusive += 1;
                     note(st, serde_json::json!({ "kind": "monitor_error", "symbol": m.symbol, "error": format!("region {} size: {other:?}", rp.name) }));
-                    return;
+                    return None;
                 }
             }
         };
@@ -384,14 +482,14 @@ fn monitor_enter(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, idx: usize, ms: &m
         if size > 1 << 20 {
             st.requires_violations += 1;
             note(st, serde_json::json!({ "kind": "requires", "symbol": m.symbol, "detail": format!("region {} of {size} bytes passed (limit 1 MiB)", rp.name) }));
-            return;
+            return None;
         }
-        let bytes = match uc.mem_read_as_vec(addr, size as usize) {
+        let bytes = match mc.read(addr, size as usize) {
             Ok(b) => b,
             Err(_) => {
                 st.requires_violations += 1;
                 note(st, serde_json::json!({ "kind": "requires", "symbol": m.symbol, "detail": format!("region {} = [0x{addr:x}, +{size}) is not mapped memory", rp.name) }));
-                return;
+                return None;
             }
         };
         if let Some(v) = &rp.var {
@@ -415,16 +513,20 @@ fn monitor_enter(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, idx: usize, ms: &m
             }
         }
     }
-    let saved = isa_info(isa).callee_saved.iter().map(|r| (*r, uc.reg_read(reg_id(isa, r)).unwrap_or(0))).collect();
+    let saved = callee_saved.iter().map(|r| (*r, rv.get(*r).copied().unwrap_or(0))).collect();
     ms.frames.push(Frame { mon: idx, ret, sp_after, saved, env, regions, obligated: ok });
+    Some(ret)
 }
 
-fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mut MonState) {
+fn monitor_return(mc: &mut dyn Machine, isa: Isa, m: &Monitor, f: Frame, ms: &mut MonState) {
     let st = ms.stats.entry(m.symbol.clone()).or_default();
     st.returns += 1;
     let mut env = f.env;
+    let mut names: Vec<&str> = m.binding.results.iter().map(|(_, r)| r.as_str()).collect();
+    names.extend_from_slice(isa_info(isa).callee_saved);
+    let rv = mc.regs(&names);
     for (name, reg) in &m.binding.results {
-        let raw = uc.reg_read(reg_id(isa, reg)).unwrap_or(0);
+        let raw = rv.get(reg).copied().unwrap_or(0);
         let v = match m.contract.results.get(name).map(|t| t.ty) {
             Some(Ty::Bv(w)) => Value::bv(w, raw),
             _ => Value::Bool(raw & 1 == 1),
@@ -433,10 +535,11 @@ fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mu
     }
     for (i, addr, size) in &f.regions {
         if let Some(o) = &m.regions[*i].observe {
-            let b = uc.mem_read_as_vec(*addr, *size as usize).unwrap_or_default();
+            let b = mc.read(*addr, *size as usize).unwrap_or_default();
             env.insert(format!("after.{o}"), Value::Bytes(b));
         }
     }
+
     // ABI preservation is owed on every call; ensures and frame only when requires held.
     let conds: &[crate::spec::Cond] = if f.obligated { &m.contract.ensures } else { &[] };
     for (id, r, why) in eval_conds(conds, &env) {
@@ -466,7 +569,7 @@ fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mu
         .saved
         .iter()
         .filter_map(|(r, v)| {
-            let now = uc.reg_read(reg_id(isa, r)).unwrap_or(0);
+            let now = rv.get(*r).copied().unwrap_or(0);
             (now != *v).then(|| format!("{r}: 0x{v:x} -> 0x{now:x}"))
         })
         .collect();
@@ -478,11 +581,6 @@ fn monitor_return(uc: &mut Unicorn<()>, isa: Isa, m: &Monitor, f: Frame, ms: &mu
 
 // ---------------------------------------------------------------- execution
 
-struct HookState {
-    stop: Option<Stop>,
-    count: u64,
-    ring: Vec<(u64, u32)>,
-}
 
 /// One binding region as placed for a routine case. The same placement is used by every
 /// executor so that their results can be compared (docs/06 6.8).
@@ -590,7 +688,21 @@ fn bytes_of(v: Value) -> Vec<u8> {
 
 impl Executor<'_> {
     pub fn run(&self, case: &Case) -> Observation {
-        self.run_inner(case).unwrap_or_else(setup_err)
+        let mut g = REMOTE.lock().unwrap_or_else(|p| p.into_inner());
+        if g.is_none() {
+            match Remote::spawn() {
+                Ok(r) => *g = Some(r),
+                Err(e) => return engine_err(e),
+            }
+        }
+        let r = g.as_mut().unwrap();
+        let obs = self.run_inner(r, case);
+        if let Some(why) = r.broken.clone() {
+            // The engine process died or broke the protocol: this case has no observation.
+            *g = None;
+            return engine_err(why);
+        }
+        obs.unwrap_or_else(setup_err)
     }
 
     fn stream_cap(&self, which: &str) -> usize {
@@ -603,26 +715,21 @@ impl Executor<'_> {
             .unwrap_or(DEFAULT_STREAM_CAP)
     }
 
-    fn run_inner(&self, case: &Case) -> Result<Observation, String> {
+    fn run_inner(&self, r: &mut Remote, case: &Case) -> Result<Observation, String> {
         let isa = self.binding.target.isa;
         let process = self.binding.target.is_process();
         let info = isa_info(isa);
         let apple = self.binding.target.abi == "apple-arm64";
         let darwin = self.binding.target.os == "darwin";
         let image = self.image;
-        let ue = |e: uc_error| format!("engine: {e:?}");
-        let mut uc = match isa {
-            Isa::X86_64 => Unicorn::new(Arch::X86, Mode::MODE_64),
-            Isa::Aarch64 => Unicorn::new(Arch::ARM64, Mode::ARM),
-        }
-        .map_err(ue)?;
-        let loc = {
-            let image = image.clone();
-            move |a: u64| image.locate(a)
-        };
+        let loc = |a: u64| image.locate(a);
+        let mut map: Vec<J> = Vec::new();
+        let mut writes: Vec<J> = Vec::new();
+        let mut set_regs: Vec<(String, u64)> = Vec::new();
+        let write = |w: &mut Vec<J>, addr: u64, b: &[u8]| w.push(json!({ "addr": addr, "hex": expr::hex(b) }));
 
         // Image segments (+ the data area of a raw process). Pages are mapped with every
-        // permission; the access hooks below enforce each segment's own permissions.
+        // permission; the allowed ranges below enforce each segment's own permissions.
         let mut segments = image.segments.clone();
         if let (true, Some(p)) = (process && self.binding.target.format == crate::spec::Format::Raw, &self.binding.process) {
             if p.data_bytes > 0 {
@@ -644,7 +751,7 @@ impl Executor<'_> {
             match run_start {
                 Some((lo, hi)) if hi == p => run_start = Some((lo, hi + PAGE)),
                 Some((lo, hi)) => {
-                    uc.mem_map(lo, (hi - lo) as usize, Permission::ALL).map_err(ue)?;
+                    map.push(json!({ "addr": lo, "size": hi - lo, "perm": "rwx" }));
                     run_start = if p == u64::MAX { None } else { Some((p, p + PAGE)) };
                 }
                 None if p != u64::MAX => run_start = Some((p, p + PAGE)),
@@ -653,17 +760,16 @@ impl Executor<'_> {
         }
         for s in &segments {
             if !s.data.is_empty() {
-                uc.mem_write(s.addr, &s.data).map_err(ue)?;
+                write(&mut writes, s.addr, &s.data);
             }
         }
 
         // Stack.
         let stack_size = page_up(self.binding.stack_bytes.max(PAGE));
         let stack_lo = STACK_TOP - stack_size;
-        uc.mem_map(stack_lo, stack_size as usize, Permission::READ | Permission::WRITE).map_err(ue)?;
+        map.push(json!({ "addr": stack_lo, "size": stack_size, "perm": "rw" }));
 
         let empty = BTreeMap::new();
-        let mut addrs: BTreeMap<String, u64> = BTreeMap::new();
         let mut placed: Vec<PlacedRegion> = Vec::new();
         let mut regs_in: BTreeMap<String, u64> = BTreeMap::new();
         let entry_sp;
@@ -673,11 +779,10 @@ impl Executor<'_> {
             // Regions: values from the case, addresses fixed per region index.
             let rs = routine_setup(self.binding, case, self.vary_placement)?;
             for r in &rs.regions {
-                uc.mem_map(r.map_base, r.map_size as usize, Permission::READ | Permission::WRITE).map_err(ue)?;
+                map.push(json!({ "addr": r.map_base, "size": r.map_size, "perm": "rw" }));
             }
             for r in &rs.regions {
-                uc.mem_write(r.addr, &r.init).map_err(ue)?;
-                addrs.insert(r.name.clone(), r.addr);
+                write(&mut writes, r.addr, &r.init);
                 placed.push(PlacedRegion { name: r.name.clone(), addr: r.addr, size: r.size, access: r.access });
             }
             regs_in = rs.regs_in;
@@ -685,17 +790,17 @@ impl Executor<'_> {
                 Isa::X86_64 => {
                     // Call just happened: [rsp] = return address, rsp ≡ 8 (mod 16).
                     entry_sp = STACK_TOP - 64 - 8;
-                    uc.mem_write(entry_sp, &SENTINEL.to_le_bytes()).map_err(ue)?;
-                    uc.reg_write(RegisterX86::RSP, entry_sp).map_err(ue)?;
-                    uc.reg_write(RegisterX86::RFLAGS, 0x2).map_err(ue)?;
+                    write(&mut writes, entry_sp, &SENTINEL.to_le_bytes());
+                    set_regs.push(("rsp".into(), entry_sp));
+                    set_regs.push(("rflags".into(), 0x2));
                 }
                 Isa::Aarch64 => {
                     entry_sp = STACK_TOP - 64;
                     // A valid (zeroed) caller frame record for x29.
                     regs_in.insert("x29".into(), entry_sp + 16);
-                    uc.mem_write(entry_sp + 16, &[0u8; 16]).map_err(ue)?;
-                    uc.reg_write(RegisterARM64::SP, entry_sp).map_err(ue)?;
-                    uc.reg_write(RegisterARM64::X30, SENTINEL).map_err(ue)?;
+                    write(&mut writes, entry_sp + 16, &[0u8; 16]);
+                    set_regs.push(("sp".into(), entry_sp));
+                    set_regs.push(("x30".into(), SENTINEL));
                 }
             }
         } else {
@@ -744,7 +849,7 @@ impl Executor<'_> {
                 top -= a.len() as u64 + 1;
                 let mut z = a.clone();
                 z.push(0);
-                uc.mem_write(top, &z).map_err(ue)?;
+                write(&mut writes, top, &z);
                 ptrs.push(top);
             }
             let words = 1 + ptrs.len() + 1 + 1 + 2;
@@ -755,7 +860,7 @@ impl Executor<'_> {
                 block.extend_from_slice(&a.to_le_bytes());
             }
             block.extend_from_slice(&[0u8; 8 * 4]); // argv NULL, envp NULL, AT_NULL pair
-            uc.mem_write(sp, &block).map_err(ue)?;
+            write(&mut writes, sp, &block);
             for g in info.gprs {
                 regs_in.insert(g.to_string(), 0);
             }
@@ -775,17 +880,15 @@ impl Executor<'_> {
                 match isa {
                     Isa::X86_64 => {
                         sp -= 8;
-                        uc.mem_write(sp, &SENTINEL.to_le_bytes()).map_err(ue)?;
+                        write(&mut writes, sp, &SENTINEL.to_le_bytes());
                     }
-                    Isa::Aarch64 => {
-                        uc.reg_write(RegisterARM64::X30, SENTINEL).map_err(ue)?;
-                    }
+                    Isa::Aarch64 => set_regs.push(("x30".into(), SENTINEL)),
                 }
             }
             entry_sp = sp;
-            uc.reg_write(sp_id(isa), sp).map_err(ue)?;
+            set_regs.push((sp_name(isa).into(), sp));
             if isa == Isa::X86_64 {
-                uc.reg_write(RegisterX86::RFLAGS, 0x202).map_err(ue)?;
+                set_regs.push(("rflags".into(), 0x202));
             }
             proc_state = Some(Proc {
                 stdin,
@@ -807,7 +910,7 @@ impl Executor<'_> {
             });
         }
         for (r, v) in &regs_in {
-            uc.reg_write(reg_id(isa, r), *v).map_err(ue)?;
+            set_regs.push((r.clone(), *v));
         }
 
         // Allowed data accesses: (lo, hi, read, write, label).
@@ -832,224 +935,151 @@ impl Executor<'_> {
             };
             allowed.push((p.addr, p.addr + p.size, r, w, format!("region `{}`", p.name)));
         }
-        let allowed: Allowed = Rc::new(allowed);
 
-        let st = Rc::new(RefCell::new(HookState { stop: None, count: 0, ring: Vec::with_capacity(RING) }));
-        let code_ranges = image.code_ranges.clone();
-        let proc_rc = Rc::new(RefCell::new(proc_state));
-        let mon = Rc::new(RefCell::new(MonState { frames: Vec::new(), stats: BTreeMap::new() }));
-        let monitors: Rc<Vec<Monitor>> = Rc::new(image.monitors.clone());
-        let mon_at: Rc<HashMap<u64, usize>> = Rc::new(monitors.iter().enumerate().map(|(i, m)| (m.addr, i)).collect());
+        let mut frozen = serde_json::Map::new();
+        if let (true, Some(v)) = (apple, regs_in.get("x18")) {
+            frozen.insert("x18".into(), json!(v));
+        }
+        let monitors = &image.monitors;
+        let mon_at: BTreeMap<u64, usize> = monitors.iter().enumerate().map(|(i, m)| (m.addr, i)).collect();
+        let mut ms = MonState { frames: Vec::new(), stats: BTreeMap::new() };
+        // Return breakpoints in use: address -> frames waiting on it.
+        let mut ret_breaks: BTreeMap<u64, usize> = BTreeMap::new();
 
-        // Instruction hook: ring buffer, budget accounting, code range check, monitors.
-        {
-            let st = st.clone();
-            let x18_in = regs_in.get("x18").copied();
-            let x18 = if apple { Some(reg_id(isa, "x18")) } else { None };
-            let loc = loc.clone();
-            let mon = mon.clone();
-            let monitors = monitors.clone();
-            let mon_at = mon_at.clone();
-            uc.add_code_hook(0, u64::MAX, move |uc, addr, size| {
-                let mut s = st.borrow_mut();
-                if s.stop.is_some() {
-                    return;
-                }
-                // Unicorn reports an undecodable instruction with this size marker.
-                if size == 0xf1f1_f1f1 {
-                    s.stop = Some(Stop::InvalidInstruction { pc_offset: loc(addr) });
-                    drop(s);
-                    let _ = uc.emu_stop();
-                    return;
-                }
-                if !code_ranges.iter().any(|(lo, hi)| addr >= *lo && addr + size as u64 <= *hi) {
-                    let from = s.ring.last().map(|(a, _)| loc(*a));
-                    s.stop = Some(Stop::LeftCode { from_offset: from, target: loc(addr) });
-                    drop(s);
-                    let _ = uc.emu_stop();
-                    return;
-                }
-                if let (Some(id), Some(v0)) = (x18, x18_in) {
-                    if uc.reg_read(id).unwrap_or(v0) != v0 {
-                        let at = s.ring.last().map(|(a, _)| loc(*a)).unwrap_or_default();
-                        s.stop = Some(Stop::ReservedRegisterUsed { pc_offset: at, register: "x18".into() });
-                        drop(s);
-                        let _ = uc.emu_stop();
-                        return;
-                    }
-                }
-                s.count += 1;
-                if s.ring.len() == RING {
-                    s.ring.remove(0);
-                }
-                s.ring.push((addr, size));
-                drop(s);
-                if !monitors.is_empty() {
-                    let mut ms = mon.borrow_mut();
-                    let sp = uc.reg_read(sp_id(isa)).unwrap_or(0);
+        r.send(&json!({
+            "op": "run",
+            "isa": match isa { Isa::X86_64 => "x86_64", Isa::Aarch64 => "aarch64" },
+            "map": map,
+            "write": writes,
+            "regs": set_regs.iter().map(|(n, v)| json!([n, v])).collect::<Vec<_>>(),
+            "entry": image.entry,
+            "until": SENTINEL,
+            "insn_limit": self.insn_limit,
+            "timeout_ms": self.timeout_ms,
+            "allowed": allowed.iter().map(|(lo, hi, rd, wr, _)| json!([lo, hi, *rd as u8, *wr as u8])).collect::<Vec<_>>(),
+            "code": image.code_ranges.iter().map(|(lo, hi)| json!([lo, hi])).collect::<Vec<_>>(),
+            "frozen": frozen,
+            "breaks": mon_at.keys().collect::<Vec<_>>(),
+        }));
+
+        // Answer the machine's events until the run ends.
+        let mut stop: Option<Stop> = None;
+        let end = loop {
+            let ev = r.recv();
+            if r.broken.is_some() {
+                return Err("engine process failed".into());
+            }
+            let mut halt = None;
+            match ev["event"].as_str().unwrap_or("") {
+                "end" => break ev,
+                "setup_error" => return Err(format!("engine: {}", ev["error"].as_str().unwrap_or("?"))),
+                "break" => {
+                    let (pc, sp) = (ev["pc"].as_u64().unwrap_or(0), ev["sp"].as_u64().unwrap_or(0));
                     while let Some(top) = ms.frames.last() {
-                        if top.ret == addr && top.sp_after == sp {
+                        if top.ret == pc && top.sp_after == sp {
                             let f = ms.frames.pop().unwrap();
-                            let m = &monitors[f.mon];
-                            monitor_return(uc, isa, m, f, &mut ms);
+                            let ret = f.ret;
+                            monitor_return(r, isa, &monitors[f.mon], f, &mut ms);
+                            let n = ret_breaks.entry(ret).or_default();
+                            *n -= 1;
+                            if *n == 0 {
+                                ret_breaks.remove(&ret);
+                                if !mon_at.contains_key(&ret) {
+                                    r.call(&json!({ "op": "break_remove", "addr": ret }));
+                                }
+                            }
                         } else {
                             break;
                         }
                     }
-                    if let Some(&i) = mon_at.get(&addr) {
-                        monitor_enter(uc, isa, &monitors[i], i, &mut ms, &loc);
-                    }
-                }
-            })
-            .map_err(ue)?;
-        }
-        // Data access monitor.
-        {
-            let st = st.clone();
-            let allowed = allowed.clone();
-            let loc = loc.clone();
-            uc.add_mem_hook(HookType::MEM_READ | HookType::MEM_WRITE, 0, u64::MAX, move |uc, t, addr, size, _v| {
-                let write = matches!(t, MemType::WRITE);
-                if !range_ok(&allowed, addr, size as u64, write) {
-                    let mut s = st.borrow_mut();
-                    if s.stop.is_none() {
-                        let pc = uc.pc_read().unwrap_or(0);
-                        s.stop = Some(Stop::MemoryViolation {
-                            pc_offset: loc(pc),
-                            access: if write { "write".into() } else { "read".into() },
-                            address: format!("0x{addr:x}"),
-                            size,
-                            detail: describe_access(addr, size, write, &allowed),
-                        });
-                    }
-                    drop(s);
-                    let _ = uc.emu_stop();
-                }
-                true
-            })
-            .map_err(ue)?;
-        }
-        // Unmapped / protected accesses (the engine faults; record where).
-        {
-            let st = st.clone();
-            let allowed = allowed.clone();
-            let loc = loc.clone();
-            uc.add_mem_hook(HookType::MEM_INVALID, 0, u64::MAX, move |uc, t, addr, size, _v| {
-                let mut s = st.borrow_mut();
-                if s.stop.is_none() {
-                    let pc = uc.pc_read().unwrap_or(0);
-                    s.stop = Some(match t {
-                        MemType::FETCH_UNMAPPED | MemType::FETCH_PROT => {
-                            let from = s.ring.last().map(|(a, _)| loc(*a));
-                            Stop::LeftCode { from_offset: from, target: loc(addr) }
-                        }
-                        _ => {
-                            let write = matches!(t, MemType::WRITE_UNMAPPED | MemType::WRITE_PROT);
-                            Stop::MemoryViolation {
-                                pc_offset: loc(pc),
-                                access: if write { "write".into() } else { "read".into() },
-                                address: format!("0x{addr:x}"),
-                                size,
-                                detail: describe_access(addr, size, write, &allowed),
+                    if let Some(&i) = mon_at.get(&pc) {
+                        if let Some(ret) = monitor_enter(r, isa, &monitors[i], i, &mut ms, &loc, sp) {
+                            let n = ret_breaks.entry(ret).or_default();
+                            if *n == 0 && !mon_at.contains_key(&ret) {
+                                r.call(&json!({ "op": "break_add", "addr": ret }));
                             }
+                            *n += 1;
                         }
-                    });
-                }
-                false
-            })
-            .map_err(ue)?;
-        }
-        // Traps. A64 `svc` is a system call in a process; everything else is a forbidden effect.
-        {
-            let st = st.clone();
-            let proc_rc = proc_rc.clone();
-            let allowed = allowed.clone();
-            let loc = loc.clone();
-            uc.add_intr_hook(move |uc, intno| {
-                let pc_insn = st.borrow().ring.last().map(|(a, _)| *a).unwrap_or_else(|| uc.pc_read().unwrap_or(0));
-                if process && isa == Isa::Aarch64 && intno == 2 {
-                    let stop = syscall(uc, isa, darwin, &mut proc_rc.borrow_mut(), &allowed, &loc(pc_insn));
-                    if let Some(stop) = stop {
-                        let mut s = st.borrow_mut();
-                        if s.stop.is_none() {
-                            s.stop = Some(stop);
-                        }
-                        drop(s);
-                        let _ = uc.emu_stop();
                     }
-                    return;
                 }
-                let mut s = st.borrow_mut();
-                if s.stop.is_none() {
-                    // A64 EXCP_UDEF (1): the engine raises it both for architecturally undefined
-                    // encodings and for instructions it does not implement, so it cannot be
-                    // blamed on the subject (docs/01 P5): unsupported, not a forbidden effect.
-                    s.stop = Some(if isa == Isa::Aarch64 && intno == 1 {
-                        Stop::InvalidInstruction { pc_offset: loc(pc_insn) }
+                "syscall" => {
+                    let pc = ev["pc"].as_u64().unwrap_or(0);
+                    let name = ev["insn"].as_str().unwrap_or("syscall").to_string();
+                    halt = if process && name == "syscall" {
+                        syscall(r, isa, darwin, &mut proc_state, &allowed, &loc(pc))
                     } else {
-                        Stop::ForbiddenEffect { pc_offset: loc(pc_insn), effect: format!("interrupt/exception {intno} (e.g. svc/int/brk)") }
-                    });
+                        Some(Stop::ForbiddenEffect { pc_offset: loc(pc), effect: name })
+                    };
                 }
-                drop(s);
-                let _ = uc.emu_stop();
-            })
-            .map_err(ue)?;
-        }
-        if isa == Isa::X86_64 {
-            for (kind, name) in [(InsnSysX86::SYSCALL, "syscall"), (InsnSysX86::SYSENTER, "sysenter")] {
-                let st = st.clone();
-                let proc_rc = proc_rc.clone();
-                let allowed = allowed.clone();
-                let loc = loc.clone();
-                uc.add_insn_sys_hook(kind, 0, u64::MAX, move |uc| {
-                    let pc = st.borrow().ring.last().map(|(a, _)| *a).unwrap_or(0);
-                    if process && name == "syscall" {
-                        if let Some(stop) = syscall(uc, isa, darwin, &mut proc_rc.borrow_mut(), &allowed, &loc(pc)) {
-                            let mut s = st.borrow_mut();
-                            if s.stop.is_none() {
-                                s.stop = Some(stop);
-                            }
-                            drop(s);
-                            let _ = uc.emu_stop();
-                        }
-                        return;
-                    }
-                    let mut s = st.borrow_mut();
-                    if s.stop.is_none() {
-                        s.stop = Some(Stop::ForbiddenEffect { pc_offset: loc(pc), effect: name.into() });
-                    }
-                    drop(s);
-                    let _ = uc.emu_stop();
-                })
-                .map_err(ue)?;
+                "interrupt" => {
+                    let pc = ev["pc"].as_u64().unwrap_or(0);
+                    let intno = ev["intno"].as_u64().unwrap_or(0);
+                    halt = if process && isa == Isa::Aarch64 && intno == 2 {
+                        // A64 `svc`: a system call in a process.
+                        syscall(r, isa, darwin, &mut proc_state, &allowed, &loc(pc))
+                    } else if isa == Isa::Aarch64 && intno == 1 {
+                        // A64 EXCP_UDEF (1): the engine raises it both for architecturally undefined
+                        // encodings and for instructions it does not implement, so it cannot be
+                        // blamed on the subject (docs/01 P5): unsupported, not a forbidden effect.
+                        Some(Stop::InvalidInstruction { pc_offset: loc(pc) })
+                    } else {
+                        Some(Stop::ForbiddenEffect { pc_offset: loc(pc), effect: format!("interrupt/exception {intno} (e.g. svc/int/brk)") })
+                    };
+                }
+                other => return Err(format!("engine: unexpected event `{other}`")),
             }
-        }
+            match halt {
+                Some(s) => {
+                    if stop.is_none() {
+                        stop = Some(s);
+                    }
+                    r.send(&json!({ "op": "stop" }));
+                }
+                None => r.send(&json!({ "op": "continue" })),
+            }
+        };
 
-        let started = std::time::Instant::now();
-        let res = uc.emu_start(image.entry, SENTINEL, self.timeout_ms * 1000, self.insn_limit as usize);
-        let elapsed = started.elapsed();
-
-        let pc = uc.pc_read().unwrap_or(0);
-        let sp = uc.reg_read(sp_id(isa)).unwrap_or(0);
-        let s = st.borrow();
-        let stop = if let Some(stop) = s.stop.clone() {
-            stop
+        let pc = end["pc"].as_u64().unwrap_or(0);
+        let sp = end["sp"].as_u64().unwrap_or(0);
+        let count = end["count"].as_u64().unwrap_or(0);
+        let elapsed_ms = end["elapsed_ms"].as_u64().unwrap_or(0);
+        let ring: Vec<(u64, usize)> = end["ring"].as_array().map(|a| a.iter().map(|x| (x[0].as_u64().unwrap_or(0), x[1].as_u64().unwrap_or(0) as usize)).collect()).unwrap_or_default();
+        let last = ring.last().map(|(a, _)| *a);
+        let opt_loc = |v: &J| v.as_u64().map(loc);
+        let engine_stop = match end["stop"]["kind"].as_str() {
+            None | Some("client") => None,
+            Some("undecodable") => Some(Stop::InvalidInstruction { pc_offset: loc(end["stop"]["pc"].as_u64().unwrap_or(0)) }),
+            Some("left_code") => Some(Stop::LeftCode { from_offset: opt_loc(&end["stop"]["from"]), target: loc(end["stop"]["target"].as_u64().unwrap_or(0)) }),
+            Some("frozen") => Some(Stop::ReservedRegisterUsed { pc_offset: opt_loc(&end["stop"]["pc"]).unwrap_or_default(), register: end["stop"]["name"].as_str().unwrap_or("").into() }),
+            Some("access") | Some("fault") => {
+                let s = &end["stop"];
+                let (write, addr, size) = (s["write"] == true, s["addr"].as_u64().unwrap_or(0), s["size"].as_u64().unwrap_or(0) as usize);
+                Some(Stop::MemoryViolation {
+                    pc_offset: loc(s["pc"].as_u64().unwrap_or(0)),
+                    access: if write { "write".into() } else { "read".into() },
+                    address: format!("0x{addr:x}"),
+                    size,
+                    detail: describe_access(addr, size, write, &allowed),
+                })
+            }
+            Some(other) => Some(Stop::EngineError { error: format!("unknown engine stop `{other}`") }),
+        };
+        let stop = if let Some(s) = engine_stop.or(stop) {
+            s
         } else {
-            match res {
-                Ok(()) if pc == SENTINEL && process && image.main_call => {
-                    let v = uc.reg_read(match isa {
-                        Isa::X86_64 => reg_id(isa, "rax"),
-                        Isa::Aarch64 => reg_id(isa, "x0"),
-                    })
-                    .unwrap_or(0)
-                        & 0xff;
-                    if let Some(p) = proc_rc.borrow_mut().as_mut() {
+            match end["error"].as_str() {
+                None if pc == SENTINEL && process && image.main_call => {
+                    let v = r.reg(match isa {
+                        Isa::X86_64 => "rax",
+                        Isa::Aarch64 => "x0",
+                    }) & 0xff;
+                    if let Some(p) = proc_state.as_mut() {
                         p.exit = Some(v);
                         push_log(p, format!("return from main ({v})"));
                     }
                     Stop::Exited { status: v }
                 }
-                Ok(()) if pc == SENTINEL && !process => {
+                None if pc == SENTINEL && !process => {
                     let expected = match isa {
                         Isa::X86_64 => entry_sp + 8,
                         Isa::Aarch64 => entry_sp,
@@ -1060,39 +1090,34 @@ impl Executor<'_> {
                         Stop::BadReturn { sp: format!("0x{sp:x}"), expected_sp: format!("0x{expected:x}") }
                     }
                 }
-                Ok(()) if s.count >= self.insn_limit => Stop::BudgetExhausted { instructions: s.count },
-                Ok(()) if elapsed.as_millis() as u64 >= self.timeout_ms => Stop::Timeout { instructions: s.count },
-                Ok(()) => Stop::EngineError { error: format!("engine stopped at pc {} without a recorded reason", loc(pc)) },
-                Err(uc_error::INSN_INVALID) => {
-                    let in_code = code_ranges_contains(&image.code_ranges, pc);
-                    let at = if in_code { pc } else { s.ring.last().map(|(a, _)| *a).unwrap_or(pc) };
+                None if count >= self.insn_limit => Stop::BudgetExhausted { instructions: count },
+                None if elapsed_ms >= self.timeout_ms => Stop::Timeout { instructions: count },
+                None => Stop::EngineError { error: format!("engine stopped at pc {} without a recorded reason", loc(pc)) },
+                Some("INSN_INVALID") => {
+                    let at = if code_ranges_contains(&image.code_ranges, pc) { pc } else { last.unwrap_or(pc) };
                     Stop::InvalidInstruction { pc_offset: loc(at) }
                 }
-                Err(e) => Stop::EngineError { error: format!("{e:?} at pc {}", loc(pc)) },
+                Some(e) => Stop::EngineError { error: format!("{e} at pc {}", loc(pc)) },
             }
         };
 
-        let mut regs_out = BTreeMap::new();
-        for g in info.gprs {
-            regs_out.insert(g.to_string(), uc.reg_read(reg_id(isa, g)).unwrap_or(0));
+        let mut names: Vec<&str> = info.gprs.to_vec();
+        match isa {
+            Isa::X86_64 => names.push("rflags"),
+            Isa::Aarch64 => names.push("x30"),
         }
-        if isa == Isa::Aarch64 {
-            regs_out.insert("x30".into(), uc.reg_read(RegisterARM64::X30).unwrap_or(0));
-        }
+        let mut regs_out = r.regs(&names);
         let flags_out = match isa {
-            Isa::X86_64 => uc.reg_read(RegisterX86::RFLAGS).unwrap_or(0),
+            Isa::X86_64 => regs_out.remove("rflags").unwrap_or(0),
             Isa::Aarch64 => 0,
         };
         let mut regions_out = BTreeMap::new();
         for p in &placed {
-            regions_out.insert(p.name.clone(), uc.mem_read_as_vec(p.addr, p.size as usize).unwrap_or_default());
+            regions_out.insert(p.name.clone(), r.read(p.addr, p.size as usize).unwrap_or_default());
         }
-        let recent = s
-            .ring
-            .iter()
-            .map(|(a, n)| Insn { offset: loc(*a), bytes: image.code_bytes(*a, *n as usize).map(expr::hex).unwrap_or_default() })
-            .collect();
-        let process_out = proc_rc.borrow().as_ref().map(|p| ProcOut {
+        r.call(&json!({ "op": "done" }));
+        let recent = ring.iter().map(|(a, n)| Insn { offset: loc(*a), bytes: image.code_bytes(*a, *n).map(expr::hex).unwrap_or_default() }).collect();
+        let process_out = proc_state.as_ref().map(|p| ProcOut {
             exit_status: p.exit,
             stdout: p.stdout.clone(),
             stderr: p.stderr.clone(),
@@ -1100,9 +1125,12 @@ impl Executor<'_> {
             syscalls: p.log.clone(),
             syscall_count: p.count,
         });
-        let monitors_out = mon.borrow().stats.clone();
-        Ok(Observation { stop, regs_in, regs_out, flags_out, regions_out, recent, instructions: s.count, process: process_out, monitors: monitors_out })
+        Ok(Observation { stop, regs_in, regs_out, flags_out, regions_out, recent, instructions: count, process: process_out, monitors: ms.stats })
     }
+}
+
+fn engine_err(e: String) -> Observation {
+    Observation { stop: Stop::EngineError { error: e }, ..setup_err(String::new()) }
 }
 
 fn code_ranges_contains(r: &[(u64, u64)], a: u64) -> bool {
@@ -1110,34 +1138,42 @@ fn code_ranges_contains(r: &[(u64, u64)], a: u64) -> bool {
 }
 
 /// Read a NUL-terminated path (at most 4096 bytes) from readable guest memory.
-fn read_path(uc: &Unicorn<()>, allowed: &[(u64, u64, bool, bool, String)], addr: u64) -> Result<Vec<u8>, ()> {
+fn read_path(mc: &mut dyn Machine, allowed: &[(u64, u64, bool, bool, String)], addr: u64) -> Result<Vec<u8>, ()> {
     let mut out = Vec::new();
-    for i in 0..4096u64 {
-        let a = addr.checked_add(i).ok_or(())?;
-        if !range_ok(allowed, a, 1, false) {
+    let mut a = addr;
+    while out.len() < 4096 {
+        // The longest readable prefix of the next chunk, read in one request.
+        let want = (4096 - out.len()).min(256) as u64;
+        let mut n = 0;
+        while n < want && a.checked_add(n).is_some_and(|x| range_ok(allowed, x, 1, false)) {
+            n += 1;
+        }
+        if n == 0 {
             return Err(());
         }
-        let mut b = [0u8; 1];
-        uc.mem_read(a, &mut b).map_err(|_| ())?;
-        if b[0] == 0 {
+        let chunk = mc.read(a, n as usize)?;
+        if let Some(z) = chunk.iter().position(|b| *b == 0) {
+            out.extend_from_slice(&chunk[..z]);
             return Ok(out);
         }
-        out.push(b[0]);
+        out.extend_from_slice(&chunk);
+        a = a.checked_add(n).ok_or(())?;
     }
     Err(())
 }
 
 /// Perform one system call against the modeled process state. Returns a stop on exit,
 /// forbidden or unsupported calls, bad buffers and output overflow.
-fn syscall(uc: &mut Unicorn<()>, isa: Isa, darwin: bool, pr: &mut Option<Proc>, allowed: &[(u64, u64, bool, bool, String)], at: &str) -> Option<Stop> {
+fn syscall(mc: &mut dyn Machine, isa: Isa, darwin: bool, pr: &mut Option<Proc>, allowed: &[(u64, u64, bool, bool, String)], at: &str) -> Option<Stop> {
     let p = pr.as_mut()?;
     let (nr_reg, arg_regs, ret_reg): (&str, [&str; 4], &str) = match (isa, darwin) {
         (Isa::X86_64, _) => ("rax", ["rdi", "rsi", "rdx", "r10"], "rax"),
         (Isa::Aarch64, false) => ("x8", ["x0", "x1", "x2", "x3"], "x0"),
         (Isa::Aarch64, true) => ("x16", ["x0", "x1", "x2", "x3"], "x0"),
     };
-    let nr = uc.reg_read(reg_id(isa, nr_reg)).unwrap_or(0);
-    let a: Vec<u64> = arg_regs.iter().map(|r| uc.reg_read(reg_id(isa, r)).unwrap_or(0)).collect();
+    let rv = mc.regs(&[nr_reg, arg_regs[0], arg_regs[1], arg_regs[2], arg_regs[3]]);
+    let nr = rv.get(nr_reg).copied().unwrap_or(0);
+    let a: Vec<u64> = arg_regs.iter().map(|r| rv.get(*r).copied().unwrap_or(0)).collect();
     p.count += 1;
     let sys = if darwin { sys_of_darwin(isa, nr) } else { sys_of(isa, nr) };
     let Some(sys) = sys else {
@@ -1185,7 +1221,7 @@ fn syscall(uc: &mut Unicorn<()>, isa: Isa, darwin: bool, pr: &mut Option<Proc>, 
                     };
                     let n = (len as usize).min(src.len());
                     let chunk = src[..n].to_vec();
-                    let _ = uc.mem_write(buf, &chunk);
+                    let _ = mc.write(buf, &chunk);
                     match &f.kind {
                         FdKind::Stdin => p.stdin_pos += n,
                         _ => p.fds[fd as usize].as_mut().unwrap().pos += n as u64,
@@ -1202,7 +1238,7 @@ fn syscall(uc: &mut Unicorn<()>, isa: Isa, darwin: bool, pr: &mut Option<Proc>, 
                     if !range_ok(allowed, buf, len, false) {
                         return Some(bad_buf(buf, len, false, "write(2) buffer"));
                     }
-                    let data = uc.mem_read_as_vec(buf, len as usize).unwrap_or_default();
+                    let data = mc.read(buf, len as usize).unwrap_or_default();
                     match &f.kind {
                         FdKind::Stdout | FdKind::Stderr => {
                             let (out, cap, name) = if matches!(f.kind, FdKind::Stdout) { (&mut p.stdout, p.out_cap, "stdout") } else { (&mut p.stderr, p.err_cap, "stderr") };
@@ -1235,7 +1271,7 @@ fn syscall(uc: &mut Unicorn<()>, isa: Isa, darwin: bool, pr: &mut Option<Proc>, 
         }
         Sys::Open | Sys::OpenAt => {
             let (path_ptr, flags) = if matches!(sys, Sys::Open) { (a[0], a[1]) } else { (a[1], a[2]) };
-            let Ok(path) = read_path(uc, allowed, path_ptr) else {
+            let Ok(path) = read_path(mc, allowed, path_ptr) else {
                 return Some(bad_buf(path_ptr, 1, false, "open(2) path (unreadable or not NUL-terminated within 4096 bytes)"));
             };
             let path = String::from_utf8_lossy(&path).to_string();
@@ -1307,19 +1343,15 @@ fn syscall(uc: &mut Unicorn<()>, isa: Isa, darwin: bool, pr: &mut Option<Proc>, 
         // darwin-stdio/1: an error sets the carry flag and returns the positive errno.
         let err = (ret as i64) < 0 && (ret as i64) >= -4095;
         let v = if err { (ret as i64).unsigned_abs() } else { ret };
-        let _ = uc.reg_write(reg_id(isa, ret_reg), v);
-        match isa {
-            Isa::Aarch64 => {
-                let f = uc.reg_read(RegisterARM64::NZCV).unwrap_or(0);
-                let _ = uc.reg_write(RegisterARM64::NZCV, if err { f | 1 << 29 } else { f & !(1 << 29) });
-            }
-            Isa::X86_64 => {
-                let f = uc.reg_read(RegisterX86::RFLAGS).unwrap_or(0);
-                let _ = uc.reg_write(RegisterX86::RFLAGS, if err { f | 1 } else { f & !1 });
-            }
-        }
+        mc.set_reg(ret_reg, v);
+        let (flags, carry) = match isa {
+            Isa::Aarch64 => ("nzcv", 1u64 << 29),
+            Isa::X86_64 => ("rflags", 1u64),
+        };
+        let f = mc.reg(flags);
+        mc.set_reg(flags, if err { f | carry } else { f & !carry });
     } else {
-        let _ = uc.reg_write(reg_id(isa, ret_reg), ret);
+        mc.set_reg(ret_reg, ret);
     }
     None
 }

@@ -33,7 +33,7 @@ What works on a Linux x86-64 host:
 - **Targets:** x86-64 and AArch64 machine-code routines (SysV, AAPCS64, Apple arm64 ABI), static
   Linux ELF processes (x86-64, AArch64), Mach-O arm64 executables (`darwin-stdio/1`), functions of
   ELF relocatable objects, and programs split into modules (link files with boundary monitors).
-- **Executors:** `emulated` (Unicorn 2.1.1, qualified per host by known-answer tests),
+- **Executors:** `emulated` (Unicorn 2.1.1 in the separate program `mukoz-emu`, qualified per host by known-answer tests),
   `native-routine` and `native-process` (the real CPU and kernel, inside a sandbox, only where an
   owner policy allows), and differential tests between emulated and native execution.
 - **Commands:** `check`, `show`, `replay`, `shrink`, `inspect`, `regressions`, `platform`, `expr check`.
@@ -48,8 +48,12 @@ Requirements: Rust 1.97.1 (pinned in `rust-toolchain.toml`), CMake and a C compi
 Capstone are built from source).
 
 ```sh
-cargo build --release
+cargo build --release      # target/release/mukoz and target/release/mukoz-emu
 ```
+
+`mukoz` runs the emulator as a separate program, `mukoz-emu`, found next to the `mukoz`
+executable (or at `$MUKOZ_EMU`). Without it, emulated results are `HOLD`
+(`ENGINE_NOT_QUALIFIED: EMULATOR_UNAVAILABLE`); native executors still work.
 
 `--no-default-features` builds without Capstone; only `show --disasm` changes.
 
@@ -97,3 +101,15 @@ python3 selfcheck/run.py      # self-check stages 1–3 (docs/09 §9.6)
 [docs/README.md](docs/README.md) is the index: concept and guarantees, platform model,
 architecture, contract language, execution, evidence and judgement, CLI, security, testing and
 self-check, design decisions, agent guide, processes and modules.
+
+## License
+
+`mukoz` (this directory, except `emu/`) is licensed under either of the MIT license
+([LICENSE-MIT](LICENSE-MIT)) or the Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), at your
+option.
+
+`mukoz-emu` ([emu/](emu/)) links Unicorn and is licensed under the GPL, version 2 or later
+([emu/LICENSE](emu/LICENSE)). It is a separate program: `mukoz` starts it as a child process and
+talks to it over a documented line protocol ([emu/PROTOCOL.md](emu/PROTOCOL.md)); neither links
+the other.
+

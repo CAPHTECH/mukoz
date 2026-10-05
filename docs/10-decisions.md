@@ -27,13 +27,14 @@
 | ADR-21 | Native execution is allowed, in addition to permission by digest, in a trial zone set by the owner where all required isolation capabilities can be confirmed. Disabled by default | So that iteration does not stall on a human's permission for every generation. It is a trade-off with safety, so the owner chooses | Added |
 | ADR-22 | The purpose of development is "AI agents can generate and fix binaries that satisfy a contract, without source", and the first exploration goal is a comparison trial of hypotheses about that value. Tier 1 is a stage goal | To measure success by value, not by the completeness of the tool. The final verdict is not left to Mukoz | Added |
 | ADR-23 | The main use is (i) direct generation of machine code by AI. (ii) Checking distributed artifacts is limited to what can be done with native-process on the same OS, with no dedicated investment | Mukoz's own value lies in routine-level checking, monitoring and counterexamples. Most of (ii) can be covered by ordinary CI | Added. To be re-decided after the comparison trial |
+| ADR-24 | Unicorn (GPL-2.0) runs only in the separate program `mukoz-emu` (GPL-2.0-or-later). `mukoz` is MIT OR Apache-2.0 and does not link it; the two talk over the documented line protocol `mukoz-emu/1`, in which the emulator knows nothing about contracts | `mukoz` can be used and embedded under a permissive license while the emulator stays GPL. The boundary is a generic machine interface (memory, registers, run, events), not shared internal data structures [R]: the usual reading is that programs communicating this way are separate works, but this has not been reviewed by a lawyer `[U]` | Added 2026-10-05. Cost: the test files took between 0% and about 20% longer than with the engine linked in (one run each) |
 
 ## 10.2 Open issues
 
 | Issue | Current proposal | What is needed to decide |
 |---|---|---|
 | Unicorn build and operation | First candidate | The P1-0 spike. Alternatives if it fails: a small instruction interpreter of our own (limited set of supported instructions), or a different emulator |
-| Mukoz license | Undecided | Upstream Unicorn lists GPLv2 (confirmed in 0.4; not re-confirmed when this document was written `[U]`). Making the worker a separate process does not necessarily resolve the license issue. Decide together with the distribution form |
+| Mukoz license | Decided (ADR-24) | Whether the process boundary is enough under the GPL has not been reviewed by a lawyer `[U]` |
 | Next host to make Tier 1 | macOS arm64 → Linux arm64 → Windows x86_64 | Whether users and CI environments exist |
 | How to build aarch64 fixtures | `binutils-aarch64-linux-gnu` or the Rust aarch64 target | Whether packages can be installed |
 | Mach-O hello fixture | Obtain 0.4's `hello-arm64`, or assemble it by hand | Where the file is (it is not in this directory) |

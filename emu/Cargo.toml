@@ -1,0 +1,11 @@
+[package]
+name = "mukoz-emu"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+description = "Machine emulator process for Mukoz's emulated executor: Unicorn behind the mukoz-emu/1 line protocol"
+publish = false
+
+[dependencies]
+unicorn-engine = { version = "=2.1.1", default-features = false, features = ["arch_x86", "arch_arm", "arch_aarch64"] }
+serde_json = "1"

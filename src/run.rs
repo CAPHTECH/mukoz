@@ -103,7 +103,7 @@ fn subject_context(l: &Loaded) -> String {
         l.binding.digest,
         l.suite.digest,
         plan::GENERATOR_VERSION,
-        emu::ENGINE,
+        emu::engine_id(),
         EVALUATOR_VERSION
     );
     sha256_hex(s.as_bytes())
@@ -168,7 +168,7 @@ impl Platform {
             "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         });
         if self.executors.iter().any(|e| e == "emulated") {
-            v["emulated"] = json!({ "engine": emu::ENGINE, "process_isolation": "in-process (worker separation not implemented yet)" });
+            v["emulated"] = json!({ "engine": emu::engine_id(), "process_isolation": "separate process (mukoz-emu, protocol mukoz-emu/1)" });
         }
         if let Some(n) = &self.native {
             v[n.as_str()] = match &self.native_state {

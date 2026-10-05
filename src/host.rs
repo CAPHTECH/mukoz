@@ -468,7 +468,7 @@ pub fn probe() -> Value {
         "cpu": cpu_info(),
         "capabilities": caps,
         "executors": {
-            "emulated": { "available": true, "engine": crate::emu::ENGINE, "isas": ["x86_64", "aarch64"], "note": "usable for an ISA once `platform qualify` passed on this host (checked at every run)" },
+            "emulated": { "available": crate::emu::engine().is_ok(), "engine": crate::emu::engine_id(), "isas": ["x86_64", "aarch64"], "note": "usable for an ISA once `platform qualify` passed on this host (checked at every run)" },
             "native-routine": { "available": linux && host_isa == "x86_64" && ok("seccomp_strict"), "isas": if host_isa == "x86_64" { json!(["x86_64"]) } else { json!([]) }, "observes": ["return registers", "callee-saved registers", "memory regions after return", "crashes (signals)"], "does_not_observe": ["individual memory accesses (page-granular guard only)", "attempted system calls beyond seccomp strict's kill"] },
             "native-process": { "available": linux && host_isa == "x86_64" && trial, "targets": ["x86_64/raw/sysv-x86_64/linux", "x86_64/elf/sysv-x86_64/linux"], "observes": ["stdout/stderr bytes", "exit status or signal", "declared files after exit"], "does_not_observe": ["registers", "memory accesses", "system calls"] },
             "translated-process": { "available": false, "reason": "no translation layer (qemu-user) on this host" },

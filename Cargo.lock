@@ -164,6 +164,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml",
+]
+
+[[package]]
+name = "mukoz-emu"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
  "unicorn-engine",
 ]
 

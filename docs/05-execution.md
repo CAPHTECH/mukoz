@@ -94,6 +94,7 @@ ABIs are held as versioned data. The versions of the ISA, the ABI, and the OS ar
 - The first candidate is Unicorn. It handles x86_64 and aarch64 with the same engine. The adoption conditions are passing the engine qualification on each host and a license check (chapter 10).
 - Hooks: instructions (whether the PC is inside the code region, sentinel reached), memory accesses (whether the half-open interval `[addr, addr+width)`, including the width, fits entirely within a permitted region), interrupt and syscall instructions (to the effect model), invalid instructions and unmapped accesses.
 - Do not automatically allocate a page on access to an unmapped address. Do not fill undefined regions with 0.
+- Implementation (0.1.0): Unicorn runs in the separate program `mukoz-emu` (chapter 03 §3.3, `emu/PROTOCOL.md`). The engine identity recorded in the subject context and in the engine qualification is what `mukoz-emu` reports at the handshake. Without `mukoz-emu`, emulated results are HOLD (`ENGINE_NOT_QUALIFIED`).
 - Per-instruction and per-access hooks are slow `[R]` (emulator hooks generally prevent fast execution of translated blocks; performance is unmeasured). Configure the required monitoring and the saving of detailed traces separately.
 
 ### native-routine (host ISA = target ISA)

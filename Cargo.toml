@@ -2,11 +2,13 @@
 name = "mukoz"
 version = "0.1.0"
 edition = "2024"
-license = "UNLICENSED"
+license = "MIT OR Apache-2.0"
+description = "Checks executable artifacts (binaries, machine-code routines) against written contracts and reports counterexamples and scope"
+readme = "README.md"
+rust-version = "1.97"
 publish = false
 
 [dependencies]
-unicorn-engine = { version = "=2.1.1", default-features = false, features = ["arch_x86", "arch_arm", "arch_aarch64"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
@@ -20,6 +22,12 @@ capstone = { version = "=0.14.0", optional = true }
 # Disassembly in `show --disasm` (diagnostics only: verdicts never depend on it, docs/09 9.7).
 default = ["disasm"]
 disasm = ["dep:capstone"]
+
+[workspace]
+# mukoz-emu (emu/) is a separate program under GPL-2.0-or-later: it links Unicorn. mukoz runs it
+# as a child process over the mukoz-emu/1 protocol and does not link it.
+members = [".", "emu", "selfcheck/kernels"]
+default-members = [".", "emu"]
 
 [profile.dev]
 opt-level = 1
