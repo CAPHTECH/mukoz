@@ -93,7 +93,7 @@ max_wall_ms_per_case = 1000
 
 ## 8.7 Foundations of trust
 
-What is trusted through concrete tests: the Inspector, the loader, Binding evaluation, the engine (Unicorn) or the OS process execution, the effect model, the expression evaluator, the Assessor, the OS and hardware, and evidence storage.
+What is trusted through concrete tests: the Inspector, the loader, Binding evaluation, the engine (icicle-emu by default, or Unicorn) or the OS process execution, the effect model, the expression evaluator, the Assessor, the OS and hardware, and evidence storage.
 
 - **Removing the generator from the set of trusted parties is different from having no trusted party left.**
 - The same AI may produce both the subject and the contract, but that alone does not give independence. Have routes to find shared misunderstandings: contract approval, comparison with a separate reference implementation, and checking against values fixed by hand.

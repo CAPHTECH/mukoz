@@ -54,7 +54,7 @@
         "contract": "arith.add64",
         "target": "x86_64/raw/sysv-x86_64/none",
         "platforms": [
-          { "executor": "emulated", "host": "linux-x86_64", "engine": "unicorn-engine 2.1.1 … via mukoz-emu 0.1.0" }
+          { "executor": "emulated", "host": "linux-x86_64", "engine": "icicle-emu git 3292602fd485 … via mukoz-emu-icicle 0.1.0" }
         ],
         "quantification": "enumerated_cases_not_exhaustive",
         "cases_planned": 4160,

@@ -24,11 +24,12 @@ default = ["disasm"]
 disasm = ["dep:capstone"]
 
 [workspace]
-# mukoz-emu (emu/) is a separate program under GPL-2.0-or-later: it links Unicorn. mukoz runs it
-# as a child process over the mukoz-emu/1 protocol and does not link it. mukoz-emu-icicle
-# (emu-icicle/) implements the same protocol on icicle-emu (MIT OR Apache-2.0).
+# mukoz runs its emulator as a child process over the mukoz-emu/1 protocol and links neither.
+# The default, mukoz-emu-icicle (emu-icicle/), uses icicle-emu (MIT OR Apache-2.0). mukoz-emu
+# (emu/) links Unicorn and is GPL-2.0-or-later: it is not a default member, so a plain
+# `cargo build` contains no GPL code; build it with `-p mukoz-emu` and select it with MUKOZ_EMU.
 members = [".", "emu", "emu-icicle", "selfcheck/kernels"]
-default-members = [".", "emu", "emu-icicle"]
+default-members = [".", "emu-icicle"]
 
 [profile.dev]
 opt-level = 1

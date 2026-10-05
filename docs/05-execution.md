@@ -89,12 +89,12 @@ ABIs are held as versioned data. The versions of the ISA, the ABI, and the OS ar
 
 ## 5.5 Executor implementation
 
-### emulated (Unicorn)
+### emulated
 
-- The first candidate is Unicorn. It handles x86_64 and aarch64 with the same engine. The adoption conditions are passing the engine qualification on each host and a license check (chapter 10).
+- The first candidate was Unicorn; the default engine is now icicle-emu (ADR-25). It handles x86_64 and aarch64 with the same engine. The adoption conditions are passing the engine qualification on each host and a license check (chapter 10).
 - Hooks: instructions (whether the PC is inside the code region, sentinel reached), memory accesses (whether the half-open interval `[addr, addr+width)`, including the width, fits entirely within a permitted region), interrupt and syscall instructions (to the effect model), invalid instructions and unmapped accesses.
 - Do not automatically allocate a page on access to an unmapped address. Do not fill undefined regions with 0.
-- Implementation (0.1.0): Unicorn runs in the separate program `mukoz-emu` (chapter 03 §3.3, `emu/PROTOCOL.md`). A second program, `mukoz-emu-icicle`, implements the same protocol on icicle-emu, a SLEIGH / p-code interpreter that shares no code with Unicorn or QEMU (`emu-icicle/README.md`, which also lists the differences between the two). `MUKOZ_EMU` selects the program. The engine identity recorded in the subject context and in the engine qualification is what the program reports at the handshake. Without an emulator program, emulated results are HOLD (`ENGINE_NOT_QUALIFIED`).
+- Implementation (0.1.0): the engine runs in a separate program (chapter 03 §3.3, `emu/PROTOCOL.md`). The default is `mukoz-emu-icicle`: icicle-emu, a SLEIGH / p-code interpreter that shares no code with Unicorn or QEMU (ADR-25). `mukoz-emu` runs Unicorn and is built only on request (`-p mukoz-emu`); `MUKOZ_EMU` selects it. `emu-icicle/README.md` lists the differences between the two. The engine identity recorded in the subject context and in the engine qualification is what the program reports at the handshake. Without an emulator program, emulated results are HOLD (`ENGINE_NOT_QUALIFIED`).
 - Observation (linux-x86_64, one run each): both programs pass the engine qualification on both ISAs, `cargo test --release` and `tools/tier1.py`. For `popcnt`, the qualification accepts either an invalid-instruction stop or the correct value: Unicorn does not implement it, icicle-emu does. A wrong value fails either way.
 - Per-instruction and per-access hooks are slow `[R]` (emulator hooks generally prevent fast execution of translated blocks; performance is unmeasured). Configure the required monitoring and the saving of detailed traces separately.
 

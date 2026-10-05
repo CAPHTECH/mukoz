@@ -1,8 +1,9 @@
 //! Emulated executor: routines (docs/05 5.3-5.5) and Linux / Darwin processes with a modeled
 //! system-call interface and boundary monitors (docs/12).
 //!
-//! The machine itself runs in a separate program, `mukoz-emu` (GPL-2.0-or-later, it links
-//! Unicorn), driven over the `mukoz-emu/1` line protocol (emu/PROTOCOL.md). This module builds
+//! The machine itself runs in a separate program driven over the `mukoz-emu/1` line protocol
+//! (emu/PROTOCOL.md): by default `mukoz-emu-icicle` (icicle-emu), or `mukoz-emu` (Unicorn,
+//! GPL-2.0-or-later) through $MUKOZ_EMU. This module builds
 //! each case's memory and registers, and answers the machine's system calls, interrupts and
 //! breakpoints with the effect model and the boundary monitors; mukoz does not link the engine.
 
@@ -84,7 +85,7 @@ pub trait Machine {
     fn write(&mut self, addr: u64, data: &[u8]) -> Result<(), ()>;
 }
 
-/// A running `mukoz-emu` process. A broken pipe or an unexpected reply marks it broken; the
+/// A running emulator process. A broken pipe or an unexpected reply marks it broken; the
 /// case then ends as ENGINE_ERROR and the next case starts a new process.
 struct Remote {
     child: Child,
@@ -101,18 +102,19 @@ impl Drop for Remote {
     }
 }
 
-/// Where `mukoz-emu` is: $MUKOZ_EMU, else next to the running mukoz, else on PATH.
+/// The emulator program: $MUKOZ_EMU, else `mukoz-emu-icicle` next to the running mukoz, else
+/// on PATH.
 fn helper_path() -> std::path::PathBuf {
     if let Some(p) = std::env::var_os("MUKOZ_EMU") {
         return p.into();
     }
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())) {
-        let p = dir.join("mukoz-emu");
+        let p = dir.join(DEFAULT_PROGRAM);
         if p.exists() {
             return p;
         }
     }
-    "mukoz-emu".into()
+    DEFAULT_PROGRAM.into()
 }
 
 impl Remote {
@@ -123,7 +125,7 @@ impl Remote {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|e| format!("EMULATOR_UNAVAILABLE: cannot start `{}` ({e}); build it (`cargo build --release` builds mukoz and mukoz-emu) and keep it next to mukoz, or set MUKOZ_EMU", path.display()))?;
+            .map_err(|e| format!("EMULATOR_UNAVAILABLE: cannot start `{}` ({e}); build it (`cargo build --release` builds mukoz and {DEFAULT_PROGRAM}) and keep it next to mukoz, or set MUKOZ_EMU", path.display()))?;
         let tx = child.stdin.take().ok_or("EMULATOR_UNAVAILABLE: no stdin")?;
         let rx = BufReader::new(child.stdout.take().ok_or("EMULATOR_UNAVAILABLE: no stdout")?);
         let mut r = Remote { child, tx, rx, engine: String::new(), broken: None };
@@ -131,7 +133,7 @@ impl Remote {
         if h["protocol"] != PROTOCOL {
             return Err(format!("EMULATOR_UNAVAILABLE: `{}` does not speak {PROTOCOL} (got {h})", path.display()));
         }
-        r.engine = format!("{} via {} {}", h["engine"].as_str().unwrap_or("?"), h["program"].as_str().unwrap_or("mukoz-emu"), h["version"].as_str().unwrap_or("?"));
+        r.engine = format!("{} via {} {}", h["engine"].as_str().unwrap_or("?"), h["program"].as_str().unwrap_or("?"), h["version"].as_str().unwrap_or("?"));
         Ok(r)
     }
     fn send(&mut self, v: &J) {
@@ -141,7 +143,7 @@ impl Remote {
         let mut s = v.to_string();
         s.push('\n');
         if let Err(e) = self.tx.write_all(s.as_bytes()).and_then(|_| self.tx.flush()) {
-            self.broken = Some(format!("mukoz-emu: write failed: {e}"));
+            self.broken = Some(format!("emulator: write failed: {e}"));
         }
     }
     fn recv(&mut self) -> J {
@@ -151,15 +153,15 @@ impl Remote {
         let mut line = String::new();
         match self.rx.read_line(&mut line) {
             Ok(0) => {
-                self.broken = Some("mukoz-emu exited".into());
+                self.broken = Some("emulator exited".into());
                 J::Null
             }
             Err(e) => {
-                self.broken = Some(format!("mukoz-emu: read failed: {e}"));
+                self.broken = Some(format!("emulator: read failed: {e}"));
                 J::Null
             }
             Ok(_) => serde_json::from_str(&line).unwrap_or_else(|e| {
-                self.broken = Some(format!("mukoz-emu: bad reply: {e}"));
+                self.broken = Some(format!("emulator: bad reply: {e}"));
                 J::Null
             }),
         }
@@ -189,10 +191,12 @@ impl Machine for Remote {
 }
 
 pub const PROTOCOL: &str = "mukoz-emu/1";
+/// The emulator program used unless $MUKOZ_EMU names another.
+const DEFAULT_PROGRAM: &str = "mukoz-emu-icicle";
 static REMOTE: Mutex<Option<Remote>> = Mutex::new(None);
 static ENGINE_ID: std::sync::OnceLock<Result<String, String>> = std::sync::OnceLock::new();
 
-/// The engine behind `emulated`, as `mukoz-emu` reports it (part of the subject context and of
+/// The engine behind `emulated`, as the emulator program reports it (part of the subject context and of
 /// the engine qualification's identity), or why it is unavailable.
 pub fn engine() -> Result<String, String> {
     ENGINE_ID

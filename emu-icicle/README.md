@@ -1,13 +1,10 @@
 # mukoz-emu-icicle
 
-A second implementation of the `mukoz-emu/1` emulator program ([../emu/PROTOCOL.md](../emu/PROTOCOL.md)),
-built on [icicle-emu](https://github.com/icicle-emu/icicle-emu), a SLEIGH / p-code interpreter.
-It shares no code with Unicorn or QEMU. `mukoz` uses it when `MUKOZ_EMU` points at it:
-
-```sh
-cargo build --release
-MUKOZ_EMU=target/release/mukoz-emu-icicle target/release/mukoz check examples/add64/suite.x86_64.toml
-```
+The default emulator program behind Mukoz's `emulated` executor. It implements the
+`mukoz-emu/1` protocol ([../emu/PROTOCOL.md](../emu/PROTOCOL.md)) on
+[icicle-emu](https://github.com/icicle-emu/icicle-emu), a SLEIGH / p-code interpreter that
+shares no code with Unicorn or QEMU. `cargo build --release` builds it next to `mukoz`, which
+starts it unless `MUKOZ_EMU` names another program (for example `mukoz-emu`, the Unicorn one).
 
 The engine qualification runs against whichever program `mukoz` talks to; its identity
 (`icicle-emu git 3292602fd485 … via mukoz-emu-icicle 0.1.0`) is part of every subject context.
