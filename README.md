@@ -28,6 +28,7 @@ Mukoz runs **enumerated cases, not proofs**. `ACCEPT_WITHIN_SCOPE` means that ev
 satisfied every property within the reported scope. It says nothing about inputs outside that
 scope. Anything Mukoz could not run or observe is `HOLD`, never success.
 
+- [What to use it for](#what-to-use-it-for)
 - [Status](#status-v010)
 - [How it works](#how-it-works)
 - [Quick start](#quick-start)
@@ -42,6 +43,54 @@ scope. Anything Mukoz could not run or observe is `HOLD`, never success.
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
 - [Contributing, security, license](#contributing-security-license)
+
+## What to use it for
+
+Mukoz checks the finished binary, whatever produced it: a compiler, an assembler, a person, or
+an AI agent writing machine code directly. A verdict rests on the contract and on what Mukoz
+observed, not on how the binary was made ([docs/01](docs/01-concept.md)). It fits these uses:
+
+1. **Checking the binaries that AI agents build.** An agent writes C, assembly or another
+   compiled language, the toolchain builds it, and Mukoz checks the result that will ship. It
+   checks after compiling and linking, and it checks the following on every case without being
+   asked:
+   - memory accesses outside the permitted regions, down to one byte (on the real CPU, memory
+     protection works only per page);
+   - ABI violations: a callee-saved register that changed, a direction flag left set, code that
+     relies on the upper bits of narrow arguments;
+   - code that assumes alignment, because the start of each region shifts from case to case.
+
+   Functions in ELF relocatable objects (`.o`) can be checked directly, as long as they need no
+   relocation. In the generation-loop trial, an agent took a C program with six seeded defects
+   from `REJECT` to `ACCEPT_WITHIN_SCOPE`. It was told to work only from its directory and from
+   Mukoz's output ([selfcheck/genloop](selfcheck/genloop/2026-10-05/README.md)).
+2. **Changing binaries without source.** Patch a legacy or third-party binary, then check that it
+   still meets its contract and that the old counterexample is fixed. For a program described
+   as modules in a link file, `--module <name>=<file>` swaps in one module to try it in place.
+   In the trials, an agent fixing gcc `-O3` output narrowed a one-byte error down from the
+   violated property and the counterexample's inputs and outputs, then found the byte.
+3. **Checking code for an ISA the host cannot run.** An x86-64 host checks AArch64 routines and
+   processes in the emulator. The contract does not depend on the ISA, so a port can be checked
+   against the contract of the original. This was the clearest benefit in the trials: without
+   Mukoz, agents tested AArch64 code with simulators they wrote themselves, which could share
+   their own misreading of the encoding.
+4. **Grading low-level code in evaluations.** Write the contract once and judge any submission
+   with it; the generator is never the judge. In the trials, Mukoz agreed with an independent
+   hidden oracle on every judgement. A verdict is only as strong as the suite, though: one
+   to-do mutation was exposed by 1 of 1570 generated cases.
+
+The trials are summarized in [eval/RESULTS.md](eval/RESULTS.md).
+
+It does not fit:
+
+- proofs of correctness: Mukoz runs enumerated cases;
+- finding a deliberately hidden backdoor, such as code that misbehaves for one 64-bit value:
+  boundary and random cases are unlikely to hit it;
+- floating-point code: floating-point arguments are unsupported, and the contract language has
+  no floating-point values yet;
+- timing side channels, such as checking that code runs in constant time;
+- whole operating systems, GUI applications, dynamic linkers, language runtimes, or running
+  malware ([docs/01 §1.5](docs/01-concept.md)).
 
 ## Status: v0.1.0
 
@@ -304,9 +353,9 @@ form.
 ## Generating binaries with an AI agent
 
 Mukoz was built for agents that write machine code directly. We ran a few small trials with
-Claude models (October 2026). The agents had no assembler: they encoded instructions by hand
-and laid the bytes out with Python. A hidden oracle, independent of Mukoz, judged every
-submission after it was handed in.
+Claude models (October 2026). In these trials the agents had no assembler: they encoded
+instructions by hand and laid the bytes out with Python. A hidden oracle, independent of Mukoz,
+judged every submission after it was handed in.
 
 - Sonnet 5.5 wrote correct programs without running them, up to the largest task we tried: a
   to-do command-line program of about 3–3.6 KB (3 of 3). Haiku 4.5 did not finish programs of
@@ -317,12 +366,13 @@ submission after it was handed in.
 - In these trials Mukoz did not measurably raise the success rate. The tasks were either easy
   enough to be written correctly in one go, or too large to be finished at all. Its clearest
   benefit was independent checking for an ISA the host cannot run. Without Mukoz, agents wrote
-  their own simulators, which share their own misreadings of the encoding.
+  their own simulators, which could share their own misreading of the encoding.
 
 The samples are small (1 to 4 runs per condition). [eval/RESULTS.md](eval/RESULTS.md) has the
-details, and [docs/11 §11.8](docs/11-agent-guide.md) turns them into practical advice. The guide
-covers choosing a model for the size of the task, encoding without an assembler, checking early,
-and making the suite strong enough. [docs/11](docs/11-agent-guide.md) is also the general guide
+details. It also compares the token cost of hand encoding with writing C or assembly and
+letting a compiler or an assembler produce the bytes. [docs/11 §11.8](docs/11-agent-guide.md)
+turns the trials into practical advice. The guide covers choosing a model for the size of the
+task, encoding without an assembler, checking early, and making the suite strong enough. [docs/11](docs/11-agent-guide.md) is also the general guide
 for agents: the generate-and-fix loop, how to read `REJECT` and `HOLD`, and how to write
 contracts and suites.
 
