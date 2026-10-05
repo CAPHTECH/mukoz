@@ -86,3 +86,51 @@ Details are in chapter 12. The key points:
 - Build from the leaf modules and get each to ACCEPT with its own Suite before moving to the upper level. When checking an upper module, write the lower modules' Suites in `[monitors]`.
 - If an upper-level REJECT shows `link.<symbol>.ensures` / `.abi` violated, fix the **callee**; if `.requires` is violated, fix the **caller**. `detail.blame` says which.
 - Locations appear as `module-name+0x…`. With `--module <name>=<file>` you can swap in any module to try it.
+
+## 11.8 Generating machine code: advice from the trials
+
+These points come from the comparison trials in `eval/RESULTS.md`. In those trials, Claude
+agents encoded instructions by hand, without an assembler, and a hidden oracle judged each
+submission. Each point says what was observed; the counts are small (1–4 runs per condition).
+
+- **Match the model to the size of the program.**
+  - Observed: Sonnet 5.5 wrote correct programs without running them, up to a 3–3.6 KB to-do
+    command-line program (3 of 3).
+  - Observed: Haiku 4.5 did not finish programs of that size. All 18 attempts stopped at stubs
+    under 610 bytes, and splitting into 8 modules did not help, because main was still not
+    written. Haiku managed some small routines, such as memmove (8 of 12 across conditions), but
+    none of utf8_to_utf16 (0 of 24).
+  - A model that stops at a stub is not making mistakes that a counterexample can fix. Give it
+    smaller pieces, or a stronger model. Whether finer splits rescue a smaller model is untested
+    `[U]`.
+- **Encode carefully; use an assembler when you may.**
+  - Observed encoding mistakes include a wrong `jcc` opcode and a wrong `cmp` immediate.
+  - Observed once: a Sonnet agent wrote a small instruction encoder in Python, and its todo2
+    program (one of three, 3–3.6 KB) passed. A table of opcodes and one function per form keeps the bytes
+    consistent `[R]`.
+  - When the task allows an assembler, using one removes this class of error `[R]`. Mukoz
+    checks the result either way.
+- **Check early, with the real contract.**
+  - Run `mukoz check --fail-fast` on a partial program, or on one routine at a time
+    (§11.7), instead of writing everything first.
+  - Observed: an agent narrowed a bug in an unrolled base64 loop from the property id (`char2`)
+    and the counterexample's `why_false` to "only odd groups", and then found the byte.
+- **For another ISA, let Mukoz be the independent check.**
+  - Observed: without Mukoz, every agent writing AArch64 on an x86-64 host built its own
+    simulator to test with. One simulator had its own bug, and all of them noted that their
+    encoder and decoder could share a misreading.
+  - Mukoz's emulator and its qualified engine do not share your understanding of the encoding.
+- **Process programs:**
+  - Read §11.6 before writing `_start`. Observed: one agent miscounted argc and fixed it from a
+    counterexample.
+  - Check stdout, the exit status and files in `observed` first.
+- **A suite is only as strong as its cases.**
+  - Observed: one to-do mutation was exposed by 1 of 1570 generated cases.
+  - Add edge values with `[generate.vars.<name>] values`.
+  - Build structured inputs with `expr` instead of filtering them with `requires`.
+  - Confirm that the suite rejects mutations you make on purpose (§11.4).
+- **When running agents in a harness:**
+  - Give each agent its own working directory, and check that nothing was written outside it.
+    Observed: one agent wrote into the repository.
+  - Stop subagents when the agent reports. Observed: one spawned subagent kept editing after
+    the report.

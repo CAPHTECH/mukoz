@@ -1,5 +1,4 @@
 /target
-/spikes/*/target
 .mukoz/
 /eval/oracle/runner
 /eval/reference/bin/
@@ -10,3 +9,4 @@ __pycache__/
 /eval/todo_mod/bin/
 /selfcheck/stage2/bin/mukoz-static
 /selfcheck/last-run.json
+/.claude/

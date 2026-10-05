@@ -15,4 +15,4 @@ GPL version 2. The full text is in [LICENSE](LICENSE).
 
 `mukoz` itself, in the parent directory, is under `MIT OR Apache-2.0`.
 
-Copyright (c) 2026 The Mukoz authors.
+Copyright (c) 2026 CAPH TECH Inc..

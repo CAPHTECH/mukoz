@@ -25,7 +25,7 @@ counterexamples and scope as machine-readable evidence.
 8. [08 Security](08-security.md)
 9. [09 Implementation plan, testing and self-check](09-implementation-plan.md)
 10. [10 Design decisions, open issues, and references](10-decisions.md)
-11. [11 Usage guide for agents](11-agent-guide.md) — the generate-and-repair loop, how to read REJECT / HOLD, how to write contracts and Suites
+11. [11 Usage guide for agents](11-agent-guide.md) — the generate-and-repair loop, how to read REJECT / HOLD, how to write contracts and Suites, advice for generating machine code (§11.8)
 12. [12 Process boundary and module split (implementation)](12-process-and-modules.md) — the effect model of system calls, files, link files, boundary monitoring, blame, native-process and Mach-O
 
 Agents writing or fixing binaries should start with chapter 11.
