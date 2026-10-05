@@ -59,12 +59,15 @@ the second unrolled group. The agent received only docs/12, not instructions for
 
 - Both conditions passed.
 - With Mukoz, this was the first `REJECT` an agent used to fix code. From the property id
-  (`char2`) and the counterexample, it narrowed the bug to "only the third character of odd
-  groups is wrong". It then found the bug by comparing the masks of the two unrolled groups (its
-  own report; two checks).
+  (`char2`) and the counterexample's inputs and outputs, it narrowed the bug to "only the third
+  character of odd groups is wrong". It then found the bug by comparing the masks of the two
+  unrolled groups (its own report; two checks).
 - The agents reported that the instruction ring did not reach back to the faulty instruction,
   and that subexpression dumps of large expressions were unreadable. `detail.why_false` was
   added in response.
+- In a rerun with the new field, the agent found the bug by reading the code first. It reported
+  that `why_false` pointed to the same place: the odd group, observed 0x35 where 0x37 was
+  expected (one run).
 
 ## Writing contracts
 
@@ -95,8 +98,9 @@ binding and suite for memmove and hex_encode.
 | exp7 | Haiku 4.5, to-do CLI | 0/3 | 0/3 | 0/3 |
 | exp8 | Haiku 4.5, to-do CLI split into 8 modules (main 1367 B + 7 routines) | 0/3 | 0/3 | 0/3 |
 
-- **Mukoz agreed with the oracle in all 63 judgements** (exp3 judged one submission twice). No
-  wrong submission was accepted.
+- **Mukoz agreed with the oracle in all 63 judgements** recorded in the trial log for these
+  experiments. The log notes that exp3 judged one submission twice; it did not keep a breakdown
+  per trial. No wrong submission was accepted.
 - Sonnet 5.5 wrote every program correctly without running it, up to todo2. Its hand-encoded
   submissions were 2969–3619 bytes, and each took 5.5–7 minutes.
 - Sonnet's mistakes in conditions A and B were few. In exp5:

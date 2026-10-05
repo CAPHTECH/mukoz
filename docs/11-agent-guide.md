@@ -114,7 +114,8 @@ submission. Each point says what was observed; the counts are small (1–4 runs 
   - Run `mukoz check --fail-fast` on a partial program, or on one routine at a time
     (§11.7), instead of writing everything first.
   - Observed: an agent narrowed a bug in an unrolled base64 loop from the property id (`char2`)
-    and the counterexample's `why_false` to "only odd groups", and then found the byte.
+    and the counterexample's inputs and outputs to "only odd groups", and then found the byte.
+    In a later run, `detail.why_false`, added after that trial, pointed to the same place.
 - **For another ISA, let Mukoz be the independent check.**
   - Observed: without Mukoz, every agent writing AArch64 on an x86-64 host built its own
     simulator to test with. One simulator had its own bug, and all of them noted that their

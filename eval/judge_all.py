@@ -23,10 +23,12 @@ def mukoz_verdict(mukoz, task, binary):
 
 def main():
     exp, mukoz = sys.argv[1], sys.argv[2]
-    dirs = sys.argv[3:] or sorted(glob.glob(os.path.join(exp, "[AB]-*")))
+    # Run directories named on the command line are relative to <exp-dir>; discovered ones
+    # already include it.
+    dirs = [d if os.path.isabs(d) else os.path.join(exp, d) for d in sys.argv[3:]] \
+        or sorted(glob.glob(os.path.join(exp, "[AB]-*")))
     with open(os.path.join(exp, "results.jsonl"), "a") as f:
         for d in dirs:
-            d = d if os.path.isabs(d) else os.path.join(exp, d)
             name = os.path.basename(d.rstrip("/"))
             cond, task = name.split("-", 1)
             sol = os.path.join(d, "solution.bin")

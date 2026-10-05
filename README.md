@@ -356,11 +356,16 @@ build, ISA and test set. A missing or failed qualification makes every emulated 
 
 ### native-routine and native-process
 
-These run the subject on the host CPU and kernel. They run only when two conditions hold:
+These run the subject on the host CPU and kernel. They run only when an owner's `policy.toml`
+(`--policy`) allows them, in one of two ways:
 
-- The artifact is inside a **trial zone** declared in an owner's `policy.toml` (`--policy`).
-- The host probe confirms every isolation capability the zone requires: user, network and PID
-  namespaces, chroot, resource limits, and seccomp for routines.
+- The artifact is inside a **trial zone**: a directory declared for given executors and
+  targets.
+- The artifact's digest is listed explicitly.
+
+The host probe must also confirm every isolation capability that the matching policy entry
+requires. The capabilities are user, network and PID namespaces, chroot, resource limits, and
+seccomp for routines. A digest entry may require none, so write the policy deliberately.
 
 Without permission the result is `HOLD` (`NATIVE_NOT_PERMITTED`). Read
 [docs/08](docs/08-security.md) before enabling them. `selfcheck/stage2/policy.toml` is a working
@@ -389,9 +394,12 @@ completed, not that the subject passed.
 ## Output, evidence and regression cases
 
 - Each `check` stores the following under `.mukoz/`:
-  - the run, its claims, cases, findings and counterexamples;
-  - the artifact, contract, binding and suite it used.
-- `show` reads any of them back by id.
+  - the run, with its claims and findings;
+  - each counterexample, with its case;
+  - a copy of the artifact.
+- The contract, binding and suite are recorded by path and digest, not copied. `replay` reads
+  them again from their paths.
+- `show` reads a run or a counterexample back by id.
 - A verdict is tied to the exact artifact, contract, binding, suite, engine and host. A
   `replay` on a changed artifact is marked as such. Mukoz never reuses an old verdict for
   changed inputs.
