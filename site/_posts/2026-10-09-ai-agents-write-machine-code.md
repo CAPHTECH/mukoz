@@ -19,7 +19,7 @@ the model vendor; model names are the ones recorded for each run. Three results 
   out at a third to a half of the size of the runs with no priority.
 
 The numbers are small: 2 to 8 runs per condition. Read them as observations, not rates. The
-full record is in
+summary of the trials is in
 [eval/RESULTS.md](https://github.com/CAPHTECH/mukoz/blob/main/eval/RESULTS.md). The speed
 figures come from a separate micro-benchmark we ran; they are not in that file.
 
@@ -27,8 +27,8 @@ figures come from a separate micro-benchmark we ran; they are not in that file.
 
 [Mukoz](https://github.com/CAPHTECH/mukoz) checks whether a binary satisfies a written
 contract. It needs no source code: it runs the machine code itself, in an emulator or under a
-sandbox, and reports for each property whether it held, with counterexamples, or that it could
-not be checked.
+sandbox, and reports for each property whether it held, failed (with a counterexample) or could not be
+checked.
 
 For each task we wrote a contract (inputs, results, permitted memory and effects), a binding
 (which registers and memory the contract refers to) and a suite of cases. The tasks were small
@@ -60,8 +60,9 @@ AArch64, two runs each, all one-shot (`Z`).
 | AArch64 (4 runs) | 0 pass | 1 pass |
 | Total | 1/16 | 13/16 |
 
-Most of Haiku 4.5's failures on these routines were instruction-encoding mistakes, and in the
-larger to-do trials all 18 of its attempts stopped at stubs. Haiku 5.5's failures were all on
+In a separate analysis of 28 failing Haiku 4.5 routine submissions from earlier trials, we
+judged the main cause of 13 to be instruction encoding. In the larger to-do trials, all 18 of its
+attempts stopped at stubs. Haiku 5.5's failures were all on
 AArch64: one rejected valid input, one read outside its permitted memory, and one run ended
 without a submission.
 
@@ -88,7 +89,7 @@ and an inverted length check.
 The `B` agents did just as well. Each wrote an AArch64 decoder and interpreter in Python, and
 several wrote fault-injection scripts to check that their own tests could catch mistakes. In
 their reports, each also noted the weakness of that approach: the encoder and the simulator were
-written from the same reading of the architecture manual, so a misreading common to both would
+written from the same understanding of AArch64 instruction encoding, so a misreading common to both would
 pass. All eight `B` submissions passed the hidden oracle; that does not show that no shared
 misreading exists.
 
@@ -178,9 +179,18 @@ that the oracle failed. That is an observation, not a guarantee.
 
 ## Try it
 
+Mukoz is an experimental project at an early stage (v0.1.0). Its interfaces and formats may
+change, and it is not a substitute for review or testing of software you ship.
+
 Mukoz is open source, under the MIT or Apache 2.0 license at your option (the optional `emu/`
 backend is GPL):
 [github.com/CAPHTECH/mukoz](https://github.com/CAPHTECH/mukoz). The task contracts are in
 [eval/tasks](https://github.com/CAPHTECH/mukoz/tree/main/eval/tasks), and
 [docs/11](https://github.com/CAPHTECH/mukoz/blob/main/docs/11-agent-guide.md) is the guide we
 give to agents.
+
+*How this post was made.* The trials were designed and directed by CAPH TECH and run with
+Claude agents. Claude also drafted this post in English from our records, and a separate model
+(OpenAI Codex) checked every number against the data before publication. CAPH TECH is
+responsible for the content; corrections are welcome as
+[issues](https://github.com/CAPHTECH/mukoz/issues).

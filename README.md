@@ -94,6 +94,9 @@ It does not fit:
 
 ## Status: v0.1.0
 
+Mukoz is an experimental project at an early stage. Its interfaces and formats may change, and
+it is not a substitute for review or testing of software you ship.
+
 | Host | Status |
 |---|---|
 | Linux x86-64 | Tier 1: the acceptance criteria in [docs/09 §9.8](docs/09-implementation-plan.md) pass (`tools/tier1.py`) |
