@@ -207,6 +207,139 @@ this summary:
   cause was not identified; the effort setting and the Claude Code version may differ between
   the sessions. Compare token counts only within one session.
 
+## What the submissions look like
+
+After the trials, we disassembled the submissions to see which mistakes Mukoz had to catch and
+how the binaries were built. Classifying a mistake, and naming the instruction the agent
+intended, is our reading of the disassembly, the evidence stores and the spec; the agents did
+not report it. AArch64 words were decoded by hand (no disassembler on the host).
+
+**Mistakes in failing final submissions.** In the routine trials, 29 final submissions failed
+the oracle: 28 from Haiku 4.5 (exp3 and exp4, 36 submissions) and 1 from Opus 5.5 (70 judged
+submissions: 39 from the first trial and the counterexample trial, 16 from the Opus calibration
+and 15 from the token-cost comparison). The 9 Sonnet 5.5 to-do submissions of exp5 all passed.
+Several Haiku submissions had more than one problem; the table gives the one we judged to be
+the main cause of each failure, so the rows are our classification, not a measured order:
+
+| Main cause (our classification) | Haiku failures |
+|---|---|
+| Instruction encoding: REX.R and REX.B swapped, a wrong SIB index, a reversed ModRM direction, an unresolved jump displacement, a wrong A64 `RET` or `B` encoding, an out-of-range `STRB` offset | 13 |
+| A signed comparison against 0x80 (`cmp` then `jl`/`jge`), so ASCII bytes were taken as lead bytes | 4 |
+| Unfinished: the code handled only part of the task (for example, it wrote one fixed unit and returned 1) | 4 |
+| AArch64 return value: `x0` still held the `dst` pointer | 3 |
+| Spec or logic: a leading continuation byte accepted, memmove's overlap direction reversed | 2 |
+| ABI: `sp` was 0 at `ret` | 1 |
+| Not classified: a store through a register that was never set, which may be an encoding or a register mistake | 1 |
+
+- Three more Haiku failures also changed a callee-saved register (x28, r12, rbx) without
+  restoring it; we counted another problem as their main cause.
+- The one Opus failure (utf8_to_utf16 on AArch64) accepted the surrogate `ED A0 80` and
+  rejected valid input just below it (`ED 9F BF`): its surrogate range check, built on
+  subtracting 0xD000, was misplaced. Whether that came from misreading the spec or from a slip
+  is not known.
+- No other Opus or Sonnet final submission failed. The models were given different task sets
+  (only utf8_to_utf16 was common to all three), so this does not show that Opus and Sonnet
+  never make encoding mistakes. The Sonnet calibration (exp2) and the Haiku to-do runs were not
+  disassembled.
+
+**Mistakes on the way, in condition A.** The evidence stores of the condition-A runs keep the
+checks that were stored:
+
+| Model | Runs | Stored checks | `REJECT` | Notes |
+|---|---|---|---|---|
+| Opus 5.5 | 20 | 21 | 1 | The only `REJECT` was the bug injected into a fix task |
+| Sonnet 5.5 | 3 | 6 | 2 | One run: the miscounted argc, fixed from the counterexample |
+| Haiku 4.5 | 18 | 338 | 309 (and 18 `HOLD`) | 3 runs reached `ACCEPT_WITHIN_SCOPE` for the whole routine (memmove), 2 of them after 2 and 23 `REJECT`s; one more run had only individual modules accepted |
+
+Of the 327 Haiku checks that did not accept, these properties were violated (one check can
+violate several): memory access outside the permitted regions 146, a functional `ensures` 142,
+a forbidden or faulting instruction 33, termination (returned or exited) 29, a callee-saved
+register 5. 259 of the 327 involved an out-of-range access or a wrong result.
+
+**Structure of the binaries.** Compared on the token-cost comparison (13 x86-64 submissions)
+and the Opus calibration (8 x86-64 submissions): 4 compiled from C and 17 written without a
+compiler (assembly, hand-encoded or direct hex).
+
+- **Functions.** In the C condition, gcc -O2 inlined every helper: the codec sources had 6
+  static functions, and each binary had one function with no `call`. The 17 routines written
+  without a compiler had no `call` either; some repeated an instruction pattern instead (one
+  hand-encoded utf8_to_utf16 has the same six-instruction continuation-byte check six times,
+  with different displacements and immediates). In the to-do processes, the hand-encoded
+  submissions did split the work: 4–7 call targets in exp5 (9 runs), 13–15 in exp6 (3 runs).
+- **Callee-saved registers.** The 4 C binaries used 2–5 callee-saved registers and saved every
+  one. 15 of the 17 routines written without a compiler used none; the other 2 saved `rbx`.
+  Inside the hand-encoded processes, internal functions mostly saved nothing and shared the
+  callee-saved registers like globals. That is legal inside one process; once the pieces are
+  checked separately, boundary monitors ([docs/12](../docs/12-process-and-modules.md)) check
+  the ABI's saving rules at each boundary.
+- **Data.** All 5 codec routines written without a compiler kept a 64-byte and a 256-byte
+  base64 table after the code. The 2 C codecs computed the characters with comparisons and had
+  4 bytes of read-only data. This is a choice in the source, not an effect of the compiler.
+- **Encoding habits.** The 3 hand-encoded codec submissions used 32-bit displacements for all
+  of their 76–88 branches (6-byte conditional and 5-byte unconditional jumps); in one of them we
+  checked that the agent's own jump helper always emitted that form. The 2 direct-hex
+  submissions used short jumps for 16 of 17 and 20 of 22 branches. gcc padded with 29–259 bytes
+  of `nop` for alignment; the 17 others had none.
+- None of these 21 submissions used SIMD instructions.
+
+## Later trials: Haiku 5.5
+
+These ran after the summary above, on Claude Haiku 5.5 (`claude-haiku-5-5` in the agent
+transcripts) and Sonnet 5.5, with the same task files, prompts and hidden oracle as before.
+
+**One-shot calibration repeated.** The 16 one-shot runs of the Haiku 4.5 calibration
+(memmove, hex_encode, utf8_count, base64, utf8_to_utf16 and codec on x86-64; utf8_to_utf16 and
+codec on AArch64; two runs each), with the same prompt:
+
+| | Haiku 4.5 | Haiku 5.5 |
+|---|---|---|
+| x86-64 (12 runs) | 1 pass (hex_encode) | 12 pass |
+| AArch64 (4 runs) | 0 pass | 1 pass: one utf8_to_utf16 rejected valid input, one codec read outside its regions, one codec run has no submission (its agent's report: it could not check its work) |
+| Total | 1/16 | 13/16 |
+
+Mukoz agreed with the oracle on all 15 submissions.
+
+**AArch64 with and without a check.** Haiku 5.5 on utf8_to_utf16 and codec for AArch64, four
+runs per task and condition, with the prompts of the earlier Haiku trials:
+
+| Condition | utf8_to_utf16 | codec | Total |
+|---|---|---|---|
+| `A`: Mukoz | 4/4 | 4/4 | 8/8 |
+| `B`: own tests (every agent wrote its own A64 simulator) | 4/4 | 4/4 | 8/8 |
+| `Z`: one shot | 1/4 | 1/4 (one without a submission) | 2/8 |
+
+- In 3 of the 8 `A` runs the first stored check was `REJECT` and a later one accepted the
+  changed binary. By the agents' reports, the fixes were a wrong range constant and a
+  mis-encoded immediate, a return address clobbered by `bl` together with a one-byte overrun,
+  and an inverted length check. The other 5 were accepted on the first check.
+- The agents' final reports (not kept in this repository) say more about `B`: each noted that
+  its encoder and its simulator shared one reading of the encoding, so a misreading common to
+  both would not be caught, and some spent much of their effort on bugs in their own simulator.
+  All 8 `B` submissions passed the oracle; that does not show that no shared misreading exists.
+- Of the 30 submissions judged (the discarded runs below included), 23 were accepted and
+  passed, 6 were rejected and failed, and 1 was `HOLD` (an instruction the emulator does not
+  support) and failed. Mukoz accepted none that failed.
+- A setup mistake on our side: the first `A` runs started before the emulator was installed next
+  to the `mukoz` binary. The four utf8_to_utf16 runs got only `HOLD` (`EMULATOR_UNAVAILABLE`);
+  of the four codec runs, three ran their checks after we had installed it and one ran none. We
+  discarded all eight and ran four new ones per task; the table shows only the new ones.
+- One codec agent left its generator outside its working directory (`gen/` beside the run
+  directories). In the priority trial below, one agent reported that it had run another run's
+  generator from the parent directory; its own submission uses a different design.
+
+**Asking for speed or size.** Sonnet 5.5, hand-encoded x86-64 utf8_to_utf16 and codec, one
+shot, two runs each with no priority, "as fast as you can" or "as small as you can" (both after
+correctness). All 12 passed the oracle and Mukoz.
+
+- Size: utf8_to_utf16 was 394–418 bytes with no priority, 492–517 for speed and 168–194 for
+  size; codec was 1551–1675, 1848–1994 and 596–676.
+- All 4 speed runs used SSE2 for runs of ASCII. None of the other 8 used SIMD, nor did any of
+  the 21 submissions described above.
+- The size runs used string instructions (`lodsb`, `stosw`) and short jumps, and computed the
+  base64 alphabet instead of keeping a table.
+- Mukoz does not check speed. We measured it separately: compared with the runs with no
+  priority, the speed runs were faster on some inputs and slower on others.
+
 ## What we conclude, and what we do not
 
 - [R] **No difference in success rate was observable.** In the reach trials, the tasks never
@@ -216,8 +349,12 @@ this summary:
 
   Basis: the reach-trial table, 3–4 runs per condition. This may change with Sonnet on tasks of
   8 KB or more, or with Haiku on tasks split into smaller pure routines.
-- [R] **No counterexample yet against using Mukoz as a judge.** It agreed with the oracle every
-  time. However, a verdict is only as strong as the suite: for one to-do mutation, 1 of 1570
+- [R] **With Haiku 5.5 on AArch64, the runs that could check their work did better.** `A` and
+  `B` each passed 8 of 8, against 2 of 8 for one-shot runs. This does not show that the two ways
+  of checking are equivalent. Basis: 8 runs per condition, two tasks, one model. Not measured:
+  whether Mukoz saves the time or tokens of writing a simulator.
+- [R] **No counterexample yet against using Mukoz as a judge.** It never accepted a submission
+  the oracle failed. However, a verdict is only as strong as the suite: for one to-do mutation, 1 of 1570
   generated cases exposed it.
 - [R] **The clearest benefit was an independent check for another ISA.** Without Mukoz, agents
   verified AArch64 code with simulators they wrote themselves, which could share their own
@@ -235,6 +372,16 @@ this summary:
   of the four conditions. Mukoz checks the result either way.
 - [U] Not measured: effort settings, a fixed and tested encoder in place of an assembler, and
   fix loops with Mukoz.
+- [R] **Most of what Mukoz caught in Haiku's routines was below the level of the algorithm.**
+  By our classification, encoding mistakes and signed comparisons were the main cause of 17 of
+  its 28 failures, and 259 of its 327 non-accepting checks involved an out-of-range access or a
+  wrong result. Basis: the disassembly of 28 failures and the stored condition-A checks, all
+  Haiku 4.5. Another reader could classify some failures differently.
+- [R] **Routines written without a compiler kept the callee-saved rule mostly by not using
+  those registers** (15 of 17), and the hand-encoded to-do processes shared registers between
+  their own functions. Such private conventions are not visible at a routine's outer boundary;
+  they become checkable when the program is split into modules with boundary monitors. Not
+  measured here.
 
 The run directories (submissions, transcripts, `results.jsonl`) are not part of this
 repository.
