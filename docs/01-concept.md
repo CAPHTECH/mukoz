@@ -89,3 +89,15 @@ Do not equate formats the parser can read with formats that can be executed and 
 | Claim | The result for one property, and its scope. |
 | Counterexample | The concrete input, initial state, and environment responses needed to reproduce a failure. |
 | Assessment | The admission (ACCEPT_WITHIN_SCOPE / HOLD / REJECT) against the current context. |
+
+## 1.7 Why the contract, not the binary
+
+The trials in [eval/RESULTS.md](../eval/RESULTS.md) inform why Mukoz checks artifacts against contracts. Each point below gives the observation with its scope, then our reading [R].
+
+- **The artifact may change; the contract stays fixed.** One contract judged utf8_to_utf16 binaries that Opus 5.5 produced through C, assembly, hand encoding and direct hex (x86-64, two runs each). Asking Sonnet 5.5 for speed made all 4 such runs use SIMD (x86-64 utf8_to_utf16 and codec, two runs each), which none of the other 29 submissions examined for SIMD did. [R] What the artifact looks like depends on how and under what request it was made, so a result is tied to the artifact's digest together with the contract, Binding, environment, platform and checker version (P4), and its meaning comes from the contract (P1).
+- **A generated artifact needs its own check.** On AArch64 (utf8_to_utf16 and codec, four runs each), Haiku 5.5 passed 2 of 8 one-shot runs; runs that could check their work passed 8 of 8 with Mukoz and 8 of 8 with their own simulator. [R] A passing check does not vouch for another artifact from the same generator, and the generator's account of its output is not independent evidence (P8).
+- **Effects can outlast the code.** [R] Data written, files changed and messages sent can remain after a program that runs once is gone. That is why a contract lists the permitted effects and why an effect that could not be observed is reported, not assumed absent (P3).
+- **A fix becomes part of the program.** [R] A generated patch lives on in the program it fixes, so the old counterexample should stay fixed and the contract should keep holding. Counterexamples are kept as regression cases tied to the contract digest and target, not to one artifact (ADR-18 in [10](10-decisions.md)).
+- **The design is carried outside the code.** The 17 x86-64 routines in the trials written without a compiler had no `call`. [R] When code is regenerated rather than maintained, the contract, the Binding and the suite are what carry the design from one artifact to the next, so they are what to version and review.
+
+Not established: whether this makes generated software a different kind of thing, or only makes regenerating it cheaper. The trials included check-and-fix iterations, but did not measure repeated regeneration as a way to maintain software, or its cost.
