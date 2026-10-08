@@ -1,0 +1,8 @@
+title: Mukoz notes
+description: Notes from CAPH TECH Inc. on checking machine code that AI agents write.
+author: CAPH TECH Inc.
+baseurl: /mukoz
+url: https://caphtech.github.io
+theme: minima
+permalink: /:year/:month/:title/
+timezone: Asia/Tokyo
