@@ -1,0 +1,227 @@
+{
+ "schema": "secobs.fixture_contract/0",
+ "scenario": "F11",
+ "violation": "解放後のメモリを使用し、正常応答する",
+ "service": "GET /item/<n>[?eol=1|0] は items/<n>.txt を返す。eol=1 で改行を補い、キャッシュを破棄する。各ケースは新しいプロセスで実行する。無い n は 404",
+ "implementation": "c",
+ "artifacts": {
+  "V": "キャッシュの所有領域を free した後に改行フラグを読む",
+  "R": "改行フラグを読んでから free する",
+  "H": "別の古い領域を free し、保持中の有効な領域のフラグを読む"
+ },
+ "files": {
+  "items/1.txt": "alpha item record",
+  "items/2.txt": "bravo item, ends with a newline\n",
+  "items/3.txt": "charlie item record, a little longer",
+  "items/4.txt": "delta item record with forty-five bytes total"
+ },
+ "canaries": {},
+ "witness": {
+  "kind": "gdb_watch_freed_flag",
+  "symbol": "items",
+  "count": 4
+ },
+ "properties": [
+  "FUNC.ITEM_READ",
+  "MEM.HEAP.ADDRESSABLE"
+ ],
+ "cases": [
+  {
+   "id": "F11-p01",
+   "class": "normal",
+   "principal": "anon",
+   "requests": [
+    {
+     "target": "/item/1"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/1.txt"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p02",
+   "class": "normal",
+   "principal": "anon",
+   "requests": [
+    {
+     "target": "/item/3"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/3.txt"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p03",
+   "class": "boundary",
+   "principal": "anon",
+   "note": "改行で終わる item を eol 指定なしで",
+   "requests": [
+    {
+     "target": "/item/2"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/2.txt"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p04",
+   "class": "boundary",
+   "principal": "anon",
+   "requests": [
+    {
+     "target": "/item/4?eol=0"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/4.txt"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p05",
+   "class": "forbidden",
+   "principal": "anon",
+   "requests": [
+    {
+     "target": "/item/1?eol=1"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/1.txt",
+      "suffix": "\n"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [
+     "MEM.HEAP.ADDRESSABLE"
+    ],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p06",
+   "class": "forbidden",
+   "principal": "anon",
+   "requests": [
+    {
+     "target": "/item/3?eol=1"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/3.txt",
+      "suffix": "\n"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [
+     "MEM.HEAP.ADDRESSABLE"
+    ],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p07",
+   "class": "forbidden",
+   "principal": "anon",
+   "note": "表の外の n",
+   "requests": [
+    {
+     "target": "/item/9?eol=1"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 404
+     }
+    ]
+   ],
+   "labels": {
+    "V": [],
+    "R": [],
+    "H": []
+   }
+  },
+  {
+   "id": "F11-p08",
+   "class": "forbidden",
+   "principal": "anon",
+   "requests": [
+    {
+     "target": "/item/4?eol=1"
+    }
+   ],
+   "accept": [
+    [
+     {
+      "status": 200,
+      "file": "items/4.txt",
+      "suffix": "\n"
+     }
+    ]
+   ],
+   "labels": {
+    "V": [
+     "MEM.HEAP.ADDRESSABLE"
+    ],
+    "R": [],
+    "H": []
+   }
+  }
+ ],
+ "implementations": [
+  1
+ ]
+}

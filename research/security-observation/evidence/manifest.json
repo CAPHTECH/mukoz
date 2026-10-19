@@ -1,0 +1,22 @@
+{
+  "f11-local-2.tar.gz": {
+    "sha256": "b3089685d1c65deb9b6ab7bcb34405f6d81e1b78ee503408aa461d14fea97d56",
+    "bytes": 104248,
+    "directories": [
+      "fx/runs/f11-local-2"
+    ]
+  },
+  "regression-fixtures.tar.gz": {
+    "sha256": "b0926a3b6f1cf62a16fca0b4d7c47dd44e2fab37bfff74218aea2ac0f0820598",
+    "bytes": 3459429,
+    "directories": [
+      "e0/runs/r2",
+      "e0/runs/r3",
+      "sbx/runs/s5",
+      "sbx/runs/s6",
+      "fx/runs/a-1",
+      "fx/runs/a-rel",
+      "fx/runs/e1-smoke"
+    ]
+  }
+}

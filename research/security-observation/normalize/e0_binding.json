@@ -1,0 +1,20 @@
+{
+ "schema": "secobs.binding/0",
+ "resources": ["secret", "decoy", "public", "rw", "link", "missing"],
+ "allow": [
+  {"principal": "cal", "resource": "decoy", "ops": ["read"]},
+  {"principal": "cal", "resource": "public", "ops": ["read"]},
+  {"principal": "cal", "resource": "rw", "ops": ["read"]}
+ ],
+ "net_allowed": ["10.77.0.1:8080"],
+ "exec_allowed": ["./cal", "./cal-O0", "/sut/cal", "/bin/cat", "/usr/bin/valgrind", "/usr/bin/valgrind.bin",
+                  "/usr/libexec/valgrind/memcheck-amd64-linux"],
+ "properties": {
+  "external.sec.fs.no_forbidden_open": "fs.no_forbidden_open",
+  "external.sec.fs.no_forbidden_read": "fs.no_forbidden_read",
+  "external.sec.fs.no_forbidden_write": "fs.no_forbidden_write",
+  "external.sec.net.no_forbidden_attempt": "net.no_forbidden_attempt",
+  "external.sec.net.no_forbidden_connect": "net.no_forbidden_connect",
+  "external.sec.proc.allowed_exec_only": "proc.allowed_exec_only"
+ }
+}

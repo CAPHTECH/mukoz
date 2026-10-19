@@ -1,0 +1,79 @@
+{
+ "schema": "secobs.fixture_contract/0",
+ "scenario": "F03",
+ "violation": "保護ファイルを読み、その後403を返す",
+ "service": "GET /doc/<name> は docs/<name> を返す。docs/.acl に載った name は 403。name は英数字と . _ - だけで、. で始まらない(他は 400)",
+ "implementation": "rust",
+ "artifacts": {
+  "V": "先に file を開いて先頭 512 byte で Content-Type を推定し、その後で ACL を見る(拒否は 403)",
+  "R": "先に ACL を見て、許可されたときだけ開く",
+  "H": "先に ACL を見る。拒否する name は O_PATH で開いて(読めない handle)mtime を 403 に載せる"
+ },
+ "files": {
+  "docs/.acl": "secret.txt\nhr.txt\n",
+  "docs/pub1.txt": "first public document\n",
+  "docs/pub2.txt": "second public document, a little longer than the first\n",
+  "docs/empty.txt": "",
+  "docs/secret-notice.txt": "this public notice only mentions the word secret\n",
+  "docs/secret.txt": "CANARY-F03-282e protected document\n",
+  "docs/hr.txt": "CANARY-F03-59ba personnel records\n"
+ },
+ "canaries": {"docs/secret.txt": "CANARY-F03-282e", "docs/hr.txt": "CANARY-F03-59ba"},
+ "binding": {
+  "schema": "secobs.binding/0",
+  "resources": ["docs/.acl", "docs/pub1.txt", "docs/pub2.txt", "docs/empty.txt", "docs/secret-notice.txt",
+                "docs/secret.txt", "docs/hr.txt"],
+  "allow": [
+   {"principal": "anon", "resource": "docs/.acl", "ops": ["read"]},
+   {"principal": "anon", "resource": "docs/pub1.txt", "ops": ["read"]},
+   {"principal": "anon", "resource": "docs/pub2.txt", "ops": ["read"]},
+   {"principal": "anon", "resource": "docs/empty.txt", "ops": ["read"]},
+   {"principal": "anon", "resource": "docs/secret-notice.txt", "ops": ["read"]}
+  ],
+  "net_allowed": [],
+  "exec_allowed": ["/sut/f03-v", "/sut/f03-r", "/sut/f03-h"],
+  "properties": {
+   "external.sec.fs.no_forbidden_open": "fs.no_forbidden_open",
+   "external.sec.fs.no_forbidden_read": "fs.no_forbidden_read"
+  }
+ },
+ "properties": ["FUNC.ALLOWED_READ", "SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ", "SEC.DATA.NO_SECRET_OUTPUT"],
+ "cases": [
+  {"id": "F03-p01", "class": "normal", "principal": "anon",
+   "requests": [{"target": "/doc/pub1.txt"}],
+   "accept": [[{"status": 200, "file": "docs/pub1.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F03-p02", "class": "normal", "principal": "anon",
+   "requests": [{"target": "/doc/pub2.txt"}],
+   "accept": [[{"status": 200, "file": "docs/pub2.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F03-p03", "class": "boundary", "principal": "anon",
+   "note": "0 byte の許可された file",
+   "requests": [{"target": "/doc/empty.txt"}],
+   "accept": [[{"status": 200, "file": "docs/empty.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F03-p04", "class": "boundary", "principal": "anon",
+   "note": "保護対象と似た名前の許可された file",
+   "requests": [{"target": "/doc/secret-notice.txt"}],
+   "accept": [[{"status": 200, "file": "docs/secret-notice.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F03-p05", "class": "forbidden", "principal": "anon",
+   "requests": [{"target": "/doc/secret.txt"}],
+   "accept": [[{"status": 403}]],
+   "labels": {"V": ["SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ"], "R": [], "H": []}},
+  {"id": "F03-p06", "class": "forbidden", "principal": "anon",
+   "requests": [{"target": "/doc/hr.txt"}],
+   "accept": [[{"status": 403}]],
+   "labels": {"V": ["SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ"], "R": [], "H": []}},
+  {"id": "F03-p07", "class": "forbidden", "principal": "anon",
+   "note": "大文字。そういう file は無いので、V でも開けない",
+   "requests": [{"target": "/doc/SECRET.TXT"}],
+   "accept": [[{"status": 404}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F03-p08", "class": "forbidden", "principal": "anon",
+   "note": "許可された request の後に保護対象",
+   "requests": [{"target": "/doc/pub1.txt"}, {"target": "/doc/secret.txt"}],
+   "accept": [[{"status": 200, "file": "docs/pub1.txt"}], [{"status": 403}]],
+   "labels": {"V": ["SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ"], "R": [], "H": []}}
+ ]
+}

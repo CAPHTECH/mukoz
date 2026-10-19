@@ -1,0 +1,18 @@
+{
+  "schema": "secobs.f11_local/0",
+  "tally": {
+    "native/responses_ok": 72,
+    "native/NOT_EVALUATED": 72,
+    "native/runs": 72,
+    "gdb/violations": 9,
+    "gdb/runs": 72,
+    "c0/responses_ok": 72,
+    "c0/NOT_EVALUATED": 72,
+    "c0/runs": 72,
+    "c/responses_ok": 72,
+    "c/SATISFIED_IN_SCOPE": 63,
+    "c/runs": 72,
+    "c/VIOLATED": 9
+  },
+  "problems": []
+}

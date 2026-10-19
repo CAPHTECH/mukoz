@@ -1,0 +1,74 @@
+{
+ "schema": "secobs.fixture_contract/0",
+ "scenario": "F01",
+ "violation": "パス解釈により許可root外の内容を返す",
+ "service": "GET /files/<name> は docs/public/<name> を返す。root の外は 403 か 404",
+ "implementation": "rust",
+ "artifacts": {
+  "V": "name を root にそのまま連結する(.. と絶対 path を解釈しない)",
+  "R": "canonicalize して docs/public の下だけを返す",
+  "H": "canonicalize して docs/public と docs/shared の下を返す(どちらも policy で読取り可)"
+ },
+ "files": {
+  "docs/public/a.txt": "alpha public document\n",
+  "docs/public/sub/c.txt": "charlie public document in sub\n",
+  "docs/shared/s.txt": "shared document, readable by policy\n",
+  "docs/protected/secret.txt": "CANARY-F01-f0ba protected document\n"
+ },
+ "canaries": {"docs/protected/secret.txt": "CANARY-F01-f0ba"},
+ "binding": {
+  "schema": "secobs.binding/0",
+  "resources": ["docs/public/a.txt", "docs/public/sub/c.txt", "docs/shared/s.txt", "docs/protected/secret.txt"],
+  "allow": [
+   {"principal": "anon", "resource": "docs/public/a.txt", "ops": ["read"]},
+   {"principal": "anon", "resource": "docs/public/sub/c.txt", "ops": ["read"]},
+   {"principal": "anon", "resource": "docs/shared/s.txt", "ops": ["read"]}
+  ],
+  "net_allowed": [],
+  "exec_allowed": ["/sut/f01-v", "/sut/f01-r", "/sut/f01-h"],
+  "properties": {
+   "external.sec.fs.no_forbidden_open": "fs.no_forbidden_open",
+   "external.sec.fs.no_forbidden_read": "fs.no_forbidden_read"
+  }
+ },
+ "properties": ["FUNC.ALLOWED_READ", "SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ", "SEC.DATA.NO_SECRET_OUTPUT"],
+ "cases": [
+  {"id": "F01-p01", "class": "normal", "principal": "anon",
+   "requests": [{"target": "/files/a.txt"}],
+   "accept": [[{"status": 200, "file": "docs/public/a.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F01-p02", "class": "normal", "principal": "anon",
+   "requests": [{"target": "/files/sub/c.txt"}],
+   "accept": [[{"status": 200, "file": "docs/public/sub/c.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F01-p03", "class": "boundary", "principal": "anon",
+   "note": ".. を含むが root の中に解決する",
+   "requests": [{"target": "/files/sub/../a.txt"}],
+   "accept": [[{"status": 200, "file": "docs/public/a.txt"}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F01-p04", "class": "boundary", "principal": "anon",
+   "note": "root の外だが policy で読取り可。返しても拒否してもよい",
+   "requests": [{"target": "/files/../shared/s.txt"}],
+   "accept": [[{"status": 200, "file": "docs/shared/s.txt"}, {"status": 403}, {"status": 404}]],
+   "labels": {"V": [], "R": [], "H": []}},
+  {"id": "F01-p05", "class": "forbidden", "principal": "anon",
+   "requests": [{"target": "/files/../protected/secret.txt"}],
+   "accept": [[{"status": 403}, {"status": 404}]],
+   "labels": {"V": ["SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ", "SEC.DATA.NO_SECRET_OUTPUT"], "R": [], "H": []}},
+  {"id": "F01-p06", "class": "forbidden", "principal": "anon",
+   "note": "/ を %2f で符号化",
+   "requests": [{"target": "/files/..%2fprotected%2fsecret.txt"}],
+   "accept": [[{"status": 403}, {"status": 404}]],
+   "labels": {"V": ["SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ", "SEC.DATA.NO_SECRET_OUTPUT"], "R": [], "H": []}},
+  {"id": "F01-p07", "class": "forbidden", "principal": "anon",
+   "note": "絶対 path。V の連結は root を置き換える",
+   "requests": [{"target": "/files//srv/fx/docs/protected/secret.txt"}],
+   "accept": [[{"status": 403}, {"status": 404}]],
+   "labels": {"V": ["SEC.FS.NO_FORBIDDEN_OPEN", "SEC.FS.NO_FORBIDDEN_READ", "SEC.DATA.NO_SECRET_OUTPUT"], "R": [], "H": []}},
+  {"id": "F01-p08", "class": "forbidden", "principal": "anon",
+   "note": ".... は普通の名前なので、V でも保護対象に届かない",
+   "requests": [{"target": "/files/....//protected/secret.txt"}],
+   "accept": [[{"status": 403}, {"status": 404}]],
+   "labels": {"V": [], "R": [], "H": []}}
+ ]
+}

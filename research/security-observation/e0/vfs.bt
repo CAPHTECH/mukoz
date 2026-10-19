@@ -1,0 +1,51 @@
+// Ground-truth byte-count layer (DESIGN.md 7.2): bytes moved at VFS functions, per inode.
+// Only files on the fixture filesystem are reported: run as
+//   bpftrace vfs.bt <st_dev of fixture mount as from stat -c %d>
+// Output: "<op> <pid> <comm> <ino> <bytes>". Nested calls inside vfs_copy_file_range
+// are not counted again (outer call only).
+
+fentry:vmlinux:vfs_copy_file_range { @in_cfr[tid] = 1; }
+
+fexit:vmlinux:vfs_read /retval > 0 && args.file->f_inode->i_sb->s_dev == $1/ {
+  printf("read %d %s %lu %ld\n", pid, comm, args.file->f_inode->i_ino, retval);
+}
+fexit:vmlinux:vfs_write /retval > 0 && args.file->f_inode->i_sb->s_dev == $1/ {
+  printf("write %d %s %lu %ld\n", pid, comm, args.file->f_inode->i_ino, retval);
+}
+fexit:vmlinux:vfs_readv /retval > 0 && args.file->f_inode->i_sb->s_dev == $1/ {
+  printf("read %d %s %lu %ld\n", pid, comm, args.file->f_inode->i_ino, retval);
+}
+fexit:vmlinux:vfs_writev /retval > 0 && args.file->f_inode->i_sb->s_dev == $1/ {
+  printf("write %d %s %lu %ld\n", pid, comm, args.file->f_inode->i_ino, retval);
+}
+fexit:vmlinux:vfs_copy_file_range /retval > 0/ {
+  delete(@in_cfr[tid]);
+  if (args.file_in->f_inode->i_sb->s_dev == $1) {
+    printf("read %d %s %lu %ld\n", pid, comm, args.file_in->f_inode->i_ino, retval);
+  }
+  if (args.file_out->f_inode->i_sb->s_dev == $1) {
+    printf("write %d %s %lu %ld\n", pid, comm, args.file_out->f_inode->i_ino, retval);
+  }
+}
+fexit:vmlinux:vfs_copy_file_range /retval <= 0/ { delete(@in_cfr[tid]); }
+
+// sendfile and the copy_file_range fallback both pass through do_splice_direct.
+fexit:vmlinux:do_splice_direct /retval > 0 && @in_cfr[tid] == 0/ {
+  if (args.in->f_inode->i_sb->s_dev == $1) {
+    printf("read %d %s %lu %ld\n", pid, comm, args.in->f_inode->i_ino, retval);
+  }
+  if (args.out->f_inode->i_sb->s_dev == $1) {
+    printf("write %d %s %lu %ld\n", pid, comm, args.out->f_inode->i_ino, retval);
+  }
+}
+// splice(2) between a file and a pipe. The pipe side is not on the fixture fs and is dropped.
+fexit:vmlinux:do_splice /retval > 0/ {
+  if (args.in->f_inode->i_sb->s_dev == $1) {
+    printf("read %d %s %lu %ld\n", pid, comm, args.in->f_inode->i_ino, retval);
+  }
+  if (args.out->f_inode->i_sb->s_dev == $1) {
+    printf("write %d %s %lu %ld\n", pid, comm, args.out->f_inode->i_ino, retval);
+  }
+}
+
+BEGIN { printf("READY\n"); }

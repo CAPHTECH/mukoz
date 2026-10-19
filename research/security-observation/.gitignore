@@ -1,0 +1,4 @@
+**/runs/
+**/build/
+**/build2/
+**/__pycache__/
