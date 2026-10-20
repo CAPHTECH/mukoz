@@ -1,0 +1,2457 @@
+{
+  "schema": "mukoz.security_examples.report/0",
+  "checks": 30,
+  "replays": 16,
+  "rows": [
+    {
+      "id": "abi.correct.x86_64",
+      "category": "abi",
+      "isa": "x86_64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "96a0223a80989161f798cf430f8ee4f610fac8fccae382022b020e3a5e3c66f6",
+      "scope": {
+        "artifact": {
+          "bytes": 5,
+          "digest": "d9cf89c572e9a193175b8735a341790208fabfe36d704868ed206cb6a85af1ba",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../../fixtures/x86_64/add64.bin"
+        },
+        "binding": "arith.add64@x86_64-sysv",
+        "cases_completed": 72,
+        "cases_failed": 0,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "abi.saved.x86_64",
+      "category": "abi",
+      "isa": "x86_64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "a42b79b88db45a43da07f04ad4d60c20ada3a48fe7278e6be7941c4261341db2",
+      "scope": {
+        "artifact": {
+          "bytes": 10,
+          "digest": "ebeee665528b5a34ff068d8d76a19926fd91b14990c0cf0aefbb9568b874d5e2",
+          "path": "/home/rizumita/workspace/mukoz/fixtures/x86_64/add64_push.bin"
+        },
+        "binding": "arith.add64@x86_64-sysv",
+        "cases_completed": 72,
+        "cases_failed": 0,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "abi.clobber.x86_64",
+      "category": "abi",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "machine.abi.callee_saved",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "0cb03f2c7d0112a5f42133a9ce62885f57c79adad781675b7e425cdf40afa7f9",
+      "scope": {
+        "artifact": {
+          "bytes": 8,
+          "digest": "d9345afdccc2f5703a15f9e3252ab70ece71d84204b4efac821bfe003cc74ea9",
+          "path": "/home/rizumita/workspace/mukoz/fixtures/x86_64/add64_mut_clobber_rbx.bin"
+        },
+        "binding": "arith.add64@x86_64-sysv",
+        "cases_completed": 72,
+        "cases_failed": 72,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "module.correct.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "e2e6626f46845daa1dc878e0a61e8d5a045464fe7cde3b7fbc08bf819bc4911c",
+      "scope": {
+        "artifact": {
+          "bytes": 26,
+          "digest": "5c96b4c869963d2bbcb537a970dae166197394d3f52598b759beb984f0c450ae",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3.bin"
+        },
+        "binding": "arith.sum3@x86_64-sysv",
+        "cases_completed": 16,
+        "cases_failed": 0,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 26,
+            "digest": "496989f402fa4292b47c8cac3cbdffa205048fb27e5b09a309ec3dd6a997a714",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 5,
+            "digest": "d9cf89c572e9a193175b8735a341790208fabfe36d704868ed206cb6a85af1ba",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "module.callee_result.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "link.arith.add64.ensures",
+      "blame": "callee",
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "b13f36fcd9b2afa041422487de6b85a6a8c0aa9a5173b33977a44d99118c9e09",
+      "scope": {
+        "artifact": {
+          "bytes": 26,
+          "digest": "537ff8cf2b9f28290c66e56211a8da6504629c2170be643b425f548b345784fa",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3.bin"
+        },
+        "binding": "arith.sum3@x86_64-sysv",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 26,
+            "digest": "496989f402fa4292b47c8cac3cbdffa205048fb27e5b09a309ec3dd6a997a714",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 7,
+            "digest": "061e9ae3aae6f78609186f5ec1aaa064080482e02c083ce3f56bcd13eb54a2b7",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "module.callee_abi.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "link.arith.add64.abi",
+      "blame": "callee",
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "9c3cd2fb196041eb661d351ef5365d8d985dbcbdcdbe0d470fd6120626b02ed4",
+      "scope": {
+        "artifact": {
+          "bytes": 26,
+          "digest": "d670168ca817926cfcb4c25597c66a19cc2f4bc6730f28f7b4060d07136ef8d7",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3.bin"
+        },
+        "binding": "arith.sum3@x86_64-sysv",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 26,
+            "digest": "496989f402fa4292b47c8cac3cbdffa205048fb27e5b09a309ec3dd6a997a714",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 8,
+            "digest": "d9345afdccc2f5703a15f9e3252ab70ece71d84204b4efac821bfe003cc74ea9",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "module.caller_requires.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "link.arith.add64.requires",
+      "blame": "caller",
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "20587b4f94c6feb795740fdcbc87c13b7a6e11eb0627d48d3432fa970dedeee4",
+      "scope": {
+        "artifact": {
+          "bytes": 26,
+          "digest": "5c96b4c869963d2bbcb537a970dae166197394d3f52598b759beb984f0c450ae",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3.bin"
+        },
+        "binding": "arith.sum3@x86_64-sysv",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 26,
+            "digest": "496989f402fa4292b47c8cac3cbdffa205048fb27e5b09a309ec3dd6a997a714",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 5,
+            "digest": "d9cf89c572e9a193175b8735a341790208fabfe36d704868ed206cb6a85af1ba",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64_small",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "argument.unsigned_correct.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "28f67a29a86939ee97e532f9420003e5209032ce7c61135e3eba1328c9dec620",
+      "scope": {
+        "artifact": {
+          "bytes": 3,
+          "digest": "b7fe494801ddec5193193abd8d564874b127e17fa0864df0bc1698d4f17b3c54",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/x86_64/zero_extend.bin"
+        },
+        "binding": "arith.zext32@x86_64",
+        "cases_completed": 16,
+        "cases_failed": 0,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.zext32",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "argument.upper_bits.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "arith.zext32/zero_extended",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "100a7d5d5928d95599dbd5b6636ba6fee45c8228383d66ebb65301654d647e83",
+      "scope": {
+        "artifact": {
+          "bytes": 4,
+          "digest": "f84e915a39a42129d4d8c8f1c771b4a320ba7b1ab0c17754721be4ff7b835a21",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/x86_64/upper_bits.bin"
+        },
+        "binding": "arith.zext32@x86_64",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.zext32",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "argument.signed_correct.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "a253462e6c9e94c9688b786daf3186011303c4a7148a8c33a612d8214448a4a5",
+      "scope": {
+        "artifact": {
+          "bytes": 4,
+          "digest": "04d718c1a94e2c258887cc8954400c1adc6bad48dcc406d6636dc53409d5dbe4",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/x86_64/sign_extend.bin"
+        },
+        "binding": "arith.sext32@x86_64",
+        "cases_completed": 16,
+        "cases_failed": 0,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sext32",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "argument.wrong_sign.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "arith.sext32/sign_extended",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "3289c25b93c734b13c4434bbceda0a725225587f0d37f340cb095f3b5d7ada74",
+      "scope": {
+        "artifact": {
+          "bytes": 3,
+          "digest": "b7fe494801ddec5193193abd8d564874b127e17fa0864df0bc1698d4f17b3c54",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/x86_64/zero_extend.bin"
+        },
+        "binding": "arith.sext32@x86_64",
+        "cases_completed": 16,
+        "cases_failed": 7,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sext32",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "effect.routine_syscall.x86_64",
+      "category": "effect",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "599f45b215e1a3a7d929f02052970eb281106d798a86b2f03c33711128fd7520",
+      "scope": {
+        "artifact": {
+          "bytes": 12,
+          "digest": "eca872a0630e454523df656f275e6e6a7fc9663c6fa1765723a15dc9d5c98d13",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/x86_64/syscall.bin"
+        },
+        "binding": "arith.add64@x86_64-sysv",
+        "cases_completed": 72,
+        "cases_failed": 72,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "effect.output_allowed.x86_64",
+      "category": "effect",
+      "isa": "x86_64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "a65cbf680dcc1d8657c57f34cad715238abed0b16ad4d1bb7f3c19710c70023a",
+      "scope": {
+        "artifact": {
+          "bytes": 39,
+          "digest": "1eff4a42ba26faaab133d7e3c7dc37dea1b3b8f0957cc993f099da4e6f46171b",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../../fixtures/process/hello_x86.bin"
+        },
+        "binding": "proc.hello@x86_64.raw",
+        "cases_completed": 4,
+        "cases_failed": 0,
+        "cases_planned": 4,
+        "cases_skipped": 0,
+        "contract": "proc.hello",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {},
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 3,
+          "excluded_by_requires": 0,
+          "random_cases": 4,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/linux"
+      }
+    },
+    {
+      "id": "effect.output_denied.x86_64",
+      "category": "effect",
+      "isa": "x86_64",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "0cf13e28e30b1ad8f9dd1197dfd47e04e9de86f05e2d06c28d54af44f08f4cd9",
+      "scope": {
+        "artifact": {
+          "bytes": 39,
+          "digest": "1eff4a42ba26faaab133d7e3c7dc37dea1b3b8f0957cc993f099da4e6f46171b",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../../fixtures/process/hello_x86.bin"
+        },
+        "binding": "proc.hello@x86_64.raw",
+        "cases_completed": 4,
+        "cases_failed": 4,
+        "cases_planned": 4,
+        "cases_skipped": 0,
+        "contract": "proc.hello",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {},
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 1,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 3,
+          "excluded_by_requires": 0,
+          "random_cases": 4,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/linux"
+      }
+    },
+    {
+      "id": "guard.unsupported.x86_64",
+      "category": "guard",
+      "isa": "x86_64",
+      "admission": "HOLD",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "138ffc9e82d67052fd2bf6bd602fa38b65cc738130bdf2f94f39aab699d31787",
+      "scope": {
+        "artifact": {
+          "bytes": 3,
+          "digest": "48fb537492f319bdde6dee2ba2c203fc626132f1b0c48f5258d610740c241f7e",
+          "path": "/home/rizumita/workspace/mukoz/fixtures/x86_64/add64_mut_ud2.bin"
+        },
+        "binding": "arith.add64@x86_64-sysv",
+        "cases_completed": 72,
+        "cases_failed": 0,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": true,
+          "qualified": true,
+          "record": "host/qualification-x86_64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 533
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "x86_64/raw/sysv-x86_64/none"
+      }
+    },
+    {
+      "id": "abi.correct.aarch64",
+      "category": "abi",
+      "isa": "aarch64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "a0b3890e5211f6de395153353f84bd5afd87ef5242c1616aaf28580d6daa356f",
+      "scope": {
+        "artifact": {
+          "bytes": 8,
+          "digest": "03039bd23d144842d3aee713b1af8f07b38005873a0cbf9ad5379526cf7a64b5",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../../fixtures/aarch64/add64.bin"
+        },
+        "binding": "arith.add64@aarch64-aapcs64",
+        "cases_completed": 72,
+        "cases_failed": 0,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "abi.saved.aarch64",
+      "category": "abi",
+      "isa": "aarch64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "f644115f6fb0b1beb8d52807d1a591c35c7ced93e93a3a6d102f3eee9b9a6b48",
+      "scope": {
+        "artifact": {
+          "bytes": 28,
+          "digest": "c2a4149481a8cb6660c2d58ac2c7c9edf19f4e446087901e521120fb21513786",
+          "path": "/home/rizumita/workspace/mukoz/fixtures/aarch64/add64_nested.bin"
+        },
+        "binding": "arith.add64@aarch64-aapcs64",
+        "cases_completed": 72,
+        "cases_failed": 0,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "abi.clobber.aarch64",
+      "category": "abi",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "machine.abi.callee_saved",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "cd19b7aa89fae4e1a6fc7d83f65a5a7e7b2c463acbce882618e56bada29acdab",
+      "scope": {
+        "artifact": {
+          "bytes": 12,
+          "digest": "6e106a8acb34c79d76afc34dd5a90d8cb8b31946fe28c72b35dd4608cdc7751d",
+          "path": "/home/rizumita/workspace/mukoz/fixtures/aarch64/add64_mut_clobber_x19.bin"
+        },
+        "binding": "arith.add64@aarch64-aapcs64",
+        "cases_completed": 72,
+        "cases_failed": 72,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "module.correct.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "899c798974725d8c8352c4b0b5ebb3fa3b106c9802cd26009cdaa00f73c1e098",
+      "scope": {
+        "artifact": {
+          "bytes": 56,
+          "digest": "9692b762daf762e88850560e78eca1111b2e9aa47d556711c922873635e777ff",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3_a64.bin"
+        },
+        "binding": "arith.sum3@aarch64-aapcs64",
+        "cases_completed": 16,
+        "cases_failed": 0,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 56,
+            "digest": "7460caae426e6acf44ed0137529f074d60c01770fc182f72c2fd33dd7ee496ea",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 8,
+            "digest": "03039bd23d144842d3aee713b1af8f07b38005873a0cbf9ad5379526cf7a64b5",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "module.callee_result.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "link.arith.add64.ensures",
+      "blame": "callee",
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "9b01f0e6b3c3560ece8e78188c1dffca190eb402e08ab4582950349e37666af6",
+      "scope": {
+        "artifact": {
+          "bytes": 56,
+          "digest": "45e6d86fbf43ac3133d5d54827e746bb924120453a42e6a78c542fd7b191abf7",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3_a64.bin"
+        },
+        "binding": "arith.sum3@aarch64-aapcs64",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 56,
+            "digest": "7460caae426e6acf44ed0137529f074d60c01770fc182f72c2fd33dd7ee496ea",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 8,
+            "digest": "8338d9b0c902e7b5315732265201b8e2b593edfa3a32f39c338f7a10d78117ea",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "module.callee_abi.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "link.arith.add64.abi",
+      "blame": "callee",
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "23126402c1e2fe0b0d9cae9fafa21197703d77cc48af73d997135c0236b6f680",
+      "scope": {
+        "artifact": {
+          "bytes": 56,
+          "digest": "15c43aedaadcb4591f796cdb14b271498b1b7ae2b5962f50cf4cbffa6d0e79e1",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3_a64.bin"
+        },
+        "binding": "arith.sum3@aarch64-aapcs64",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 56,
+            "digest": "7460caae426e6acf44ed0137529f074d60c01770fc182f72c2fd33dd7ee496ea",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 12,
+            "digest": "6e106a8acb34c79d76afc34dd5a90d8cb8b31946fe28c72b35dd4608cdc7751d",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "module.caller_requires.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "link.arith.add64.requires",
+      "blame": "caller",
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "bc99274cd0ca428a483c0a6f98bc1b126048457bea85c84e01373ef7e7f69987",
+      "scope": {
+        "artifact": {
+          "bytes": 56,
+          "digest": "9692b762daf762e88850560e78eca1111b2e9aa47d556711c922873635e777ff",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../link_sum3/sum3_a64.bin"
+        },
+        "binding": "arith.sum3@aarch64-aapcs64",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sum3",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 1
+          },
+          "input.b": {
+            "all_ones": 0,
+            "distinct": 14,
+            "max": "0xfffffffffffffffa",
+            "min": "0x5",
+            "type": "bv64",
+            "zero": 0
+          },
+          "input.c": {
+            "all_ones": 0,
+            "distinct": 15,
+            "max": "0xfffffffffffffffc",
+            "min": "0x3",
+            "type": "bv64",
+            "zero": 0
+          }
+        },
+        "modules": [
+          {
+            "base": "0x100000",
+            "bytes": 56,
+            "digest": "7460caae426e6acf44ed0137529f074d60c01770fc182f72c2fd33dd7ee496ea",
+            "name": "main"
+          },
+          {
+            "base": "0x200000",
+            "bytes": 8,
+            "digest": "03039bd23d144842d3aee713b1af8f07b38005873a0cbf9ad5379526cf7a64b5",
+            "name": "arith"
+          }
+        ],
+        "monitors": [
+          {
+            "contract": "arith.add64_small",
+            "symbol": "arith.add64"
+          }
+        ],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 16,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "argument.unsigned_correct.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "93d154c58816b8714c1499e152a6b00f64ba66f56a85a4db6e4dba059367be51",
+      "scope": {
+        "artifact": {
+          "bytes": 8,
+          "digest": "801b2f67a2008c26bc526cf57b2f27dc997bef2e126dabafc875c37492288da2",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/aarch64/zero_extend.bin"
+        },
+        "binding": "arith.zext32@aarch64",
+        "cases_completed": 16,
+        "cases_failed": 0,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.zext32",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "argument.upper_bits.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "arith.zext32/zero_extended",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "dd4f1c0341685aebb27eb87fa1ef8b32b523e17b7c2fbb9507da48e1f2b785cc",
+      "scope": {
+        "artifact": {
+          "bytes": 4,
+          "digest": "110f46b5b35c069160560c6ad6786f647dd44e8760a52a46fc22dbbcd7630b91",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/aarch64/upper_bits.bin"
+        },
+        "binding": "arith.zext32@aarch64",
+        "cases_completed": 16,
+        "cases_failed": 16,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.zext32",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "argument.signed_correct.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "db9fe19d2023eb909d005f61987dd15ce06a7a83fd1e78a72a9cab4fa5a3fbf6",
+      "scope": {
+        "artifact": {
+          "bytes": 8,
+          "digest": "3675f6500bf163eb6a8c343268e06898b384d93b12ea0bc696984d8679a0c808",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/aarch64/sign_extend.bin"
+        },
+        "binding": "arith.sext32@aarch64",
+        "cases_completed": 16,
+        "cases_failed": 0,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sext32",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "argument.wrong_sign.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "arith.sext32/sign_extended",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "2903a41c0678806c4f6dea314df5fbe1b49d2defe7983172c9b5d84e24b5ab06",
+      "scope": {
+        "artifact": {
+          "bytes": 8,
+          "digest": "801b2f67a2008c26bc526cf57b2f27dc997bef2e126dabafc875c37492288da2",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/aarch64/zero_extend.bin"
+        },
+        "binding": "arith.sext32@aarch64",
+        "cases_completed": 16,
+        "cases_failed": 7,
+        "cases_planned": 16,
+        "cases_skipped": 0,
+        "contract": "arith.sext32",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 1,
+            "distinct": 16,
+            "max": "0xffffffff",
+            "min": "0x0",
+            "type": "bv32",
+            "zero": 1
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 8,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "effect.routine_syscall.aarch64",
+      "category": "effect",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "db4689c793979edf763d246d686d7dd353dc6d3bf3aa9c491f42ccb4df4c88c6",
+      "scope": {
+        "artifact": {
+          "bytes": 20,
+          "digest": "69bc619a3ac5243fd5703a7c5f110b6513683aaccdc57eb8e763b5918d851dad",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/aarch64/syscall.bin"
+        },
+        "binding": "arith.add64@aarch64-aapcs64",
+        "cases_completed": 72,
+        "cases_failed": 72,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 3,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    },
+    {
+      "id": "effect.output_allowed.aarch64",
+      "category": "effect",
+      "isa": "aarch64",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "fd30a81483e253a849fd8685608d08c1da943470ea94d1aafe352babacc7fa46",
+      "scope": {
+        "artifact": {
+          "bytes": 40,
+          "digest": "1d82fa767c1a204c04d5de6c9d8d7d65df4c5705bdc380095174035875ef8818",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../../fixtures/process/hello_a64.bin"
+        },
+        "binding": "proc.hello@aarch64.raw",
+        "cases_completed": 4,
+        "cases_failed": 0,
+        "cases_planned": 4,
+        "cases_skipped": 0,
+        "contract": "proc.hello",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {},
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 3,
+          "excluded_by_requires": 0,
+          "random_cases": 4,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/linux"
+      }
+    },
+    {
+      "id": "effect.output_denied.aarch64",
+      "category": "effect",
+      "isa": "aarch64",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "blame": null,
+      "replay_verified": true,
+      "problems": [],
+      "subject_context": "1d3f5dc3dcdb4ce2c60b80b225f2f043f39eebe833554538df903787f746eac6",
+      "scope": {
+        "artifact": {
+          "bytes": 40,
+          "digest": "1d82fa767c1a204c04d5de6c9d8d7d65df4c5705bdc380095174035875ef8818",
+          "path": "/home/rizumita/workspace/mukoz/examples/security_checks/../../fixtures/process/hello_a64.bin"
+        },
+        "binding": "proc.hello@aarch64.raw",
+        "cases_completed": 4,
+        "cases_failed": 4,
+        "cases_planned": 4,
+        "cases_skipped": 0,
+        "contract": "proc.hello",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {},
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 1,
+        "plan_stats": {
+          "boundary_cases": 0,
+          "boundary_mode": "none",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 3,
+          "excluded_by_requires": 0,
+          "random_cases": 4,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/linux"
+      }
+    },
+    {
+      "id": "guard.unsupported.aarch64",
+      "category": "guard",
+      "isa": "aarch64",
+      "admission": "HOLD",
+      "property": null,
+      "blame": null,
+      "replay_verified": null,
+      "problems": [],
+      "subject_context": "1f6794366be8fd90cb524dc82b9a8960dcec8cf4a8ce50b2e4b29ee1c2780eb9",
+      "scope": {
+        "artifact": {
+          "bytes": 8,
+          "digest": "4ec3f2ad6ffea04b8259bcf2c98335cd5f87a02b29c6ccd30a33e88483d8652e",
+          "path": "/home/rizumita/workspace/mukoz/fixtures/aarch64/add64_mut_udf.bin"
+        },
+        "binding": "arith.add64@aarch64-aapcs64",
+        "cases_completed": 72,
+        "cases_failed": 0,
+        "cases_planned": 72,
+        "cases_skipped": 0,
+        "contract": "arith.add64",
+        "engine_qualification": {
+          "native_cross_check_passed": null,
+          "qualified": true,
+          "record": "host/qualification-aarch64.json",
+          "run_during_this_check": true,
+          "test_set": "mukoz-qualify/1 6bc7109d598a2b36",
+          "unsupported_by_engine": [],
+          "vectors": 324
+        },
+        "generator": "mukoz-gen/1",
+        "input_summary": {
+          "input.a": {
+            "all_ones": 8,
+            "distinct": 15,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          },
+          "input.b": {
+            "all_ones": 8,
+            "distinct": 14,
+            "max": "0xffffffffffffffff",
+            "min": "0x0",
+            "type": "bv64",
+            "zero": 8
+          }
+        },
+        "modules": [],
+        "monitors": [],
+        "new_regression_cases": 0,
+        "plan_stats": {
+          "boundary_cases": 64,
+          "boundary_mode": "product",
+          "boundary_product_exceeded_at": null,
+          "duplicate_inputs": 0,
+          "excluded_by_requires": 0,
+          "random_cases": 8,
+          "regression_cases": 0,
+          "regression_not_applicable": 0,
+          "requires_eval_errors": 0
+        },
+        "platform": {
+          "emulated": {
+            "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58) via mukoz-emu-icicle 0.1.0",
+            "process_isolation": "separate process (protocol mukoz-emu/1)"
+          },
+          "executors": [
+            "emulated"
+          ],
+          "host": "linux-x86_64"
+        },
+        "quantification": "enumerated_cases_not_exhaustive",
+        "regression_cases_run": 0,
+        "target": "aarch64/raw/aapcs64/none"
+      }
+    }
+  ],
+  "problems": [],
+  "matrix_sha256": "840bbc5b7024118f06be137a675d26920cf18da4ce5d87e71b5cf74c3da697b4",
+  "runner_sha256": "9612bb7b4fd6759bd3f3e097b9747d49872e853fab2b7217dcabc3d8f9abd461",
+  "mukoz_sha256": "e22e1c0f95bcc34d5b9a615854c9e5c87fe38a1ce4ce046c4fa02fee785b6d56"
+}

@@ -1,0 +1,17 @@
+schema = "mukoz.suite/1"
+id = "security.copy_word.x86_64"
+contract = "contract.toml"
+binding = "binding.x86_64.toml"
+
+[artifact]
+path = "x86_64/correct.bin"
+
+[generate]
+seed = "20261020"
+random_cases = 16
+
+[generate.vars.dst]
+len = "bv64(8)"
+
+[limits]
+instructions_per_case = 100

@@ -1,0 +1,9 @@
+schema = "mukoz.suite/1"
+id = "security.sum.aarch64"
+contract = "../add64/contract.toml"
+binding = "../add64/binding.aarch64.toml"
+[artifact]
+path = "../../fixtures/aarch64/add64.bin"
+[generate]
+seed = "20261020"
+random_cases = 8

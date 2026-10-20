@@ -1,0 +1,9 @@
+schema = "mukoz.suite/1"
+id = "security.unsigned.aarch64"
+contract = "../zext32/contract.toml"
+binding = "unsigned.aarch64.binding.toml"
+[artifact]
+path = "aarch64/zero_extend.bin"
+[generate]
+seed = "20261020"
+random_cases = 8

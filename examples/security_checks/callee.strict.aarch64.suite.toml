@@ -1,0 +1,4 @@
+schema = "mukoz.suite/1"
+id = "security.callee.strict.aarch64"
+contract = "../link_sum3/add64_small/contract.toml"
+binding = "callee.strict.aarch64.binding.toml"

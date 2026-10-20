@@ -1,0 +1,303 @@
+{
+  "schema": "mukoz.security_examples/0",
+  "cases": [
+    {
+      "id": "abi.correct.x86_64",
+      "category": "abi",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/sum.x86_64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "abi.saved.x86_64",
+      "category": "abi",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/sum.x86_64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "artifact": "fixtures/x86_64/add64_push.bin"
+    },
+    {
+      "id": "abi.clobber.x86_64",
+      "category": "abi",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/sum.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "machine.abi.callee_saved",
+      "artifact": "fixtures/x86_64/add64_mut_clobber_rbx.bin",
+      "satisfied": [
+        "arith.add64/sum"
+      ],
+      "control": "abi.saved.x86_64"
+    },
+    {
+      "id": "module.correct.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/module.x86_64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "module.callee_result.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/module.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "link.arith.add64.ensures",
+      "module": {
+        "arith": "fixtures/x86_64/add64_mut_sub.bin"
+      },
+      "blame": "callee",
+      "control": "module.correct.x86_64"
+    },
+    {
+      "id": "module.callee_abi.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/module.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "link.arith.add64.abi",
+      "module": {
+        "arith": "fixtures/x86_64/add64_mut_clobber_rbx.bin"
+      },
+      "blame": "callee",
+      "control": "module.correct.x86_64"
+    },
+    {
+      "id": "module.caller_requires.x86_64",
+      "category": "module",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/module.strict.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "link.arith.add64.requires",
+      "blame": "caller",
+      "satisfied": [
+        "arith.sum3/sum"
+      ],
+      "forbid_violations": [
+        "link.arith.add64.ensures"
+      ],
+      "control": "module.correct.x86_64"
+    },
+    {
+      "id": "argument.unsigned_correct.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/unsigned.x86_64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "argument.upper_bits.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/unsigned.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "arith.zext32/zero_extended",
+      "artifact": "examples/security_checks/x86_64/upper_bits.bin",
+      "control": "argument.unsigned_correct.x86_64"
+    },
+    {
+      "id": "argument.signed_correct.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/signed.x86_64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "argument.wrong_sign.x86_64",
+      "category": "argument",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/signed.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "arith.sext32/sign_extended",
+      "artifact": "examples/security_checks/x86_64/zero_extend.bin",
+      "control": "argument.signed_correct.x86_64"
+    },
+    {
+      "id": "effect.routine_syscall.x86_64",
+      "category": "effect",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/sum.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "artifact": "examples/security_checks/x86_64/syscall.bin",
+      "control": "abi.correct.x86_64"
+    },
+    {
+      "id": "effect.output_allowed.x86_64",
+      "category": "effect",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/output.allowed.x86_64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "effect.output_denied.x86_64",
+      "category": "effect",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/output.denied.x86_64.suite.toml",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "control": "effect.output_allowed.x86_64"
+    },
+    {
+      "id": "guard.unsupported.x86_64",
+      "category": "guard",
+      "isa": "x86_64",
+      "suite": "examples/security_checks/sum.x86_64.suite.toml",
+      "admission": "HOLD",
+      "artifact": "fixtures/x86_64/add64_mut_ud2.bin",
+      "reason": "UNSUPPORTED_DURING_RUN",
+      "forbid_violations": [
+        "effects.no_forbidden"
+      ]
+    },
+    {
+      "id": "abi.correct.aarch64",
+      "category": "abi",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/sum.aarch64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "abi.saved.aarch64",
+      "category": "abi",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/sum.aarch64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE",
+      "artifact": "fixtures/aarch64/add64_nested.bin"
+    },
+    {
+      "id": "abi.clobber.aarch64",
+      "category": "abi",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/sum.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "machine.abi.callee_saved",
+      "artifact": "fixtures/aarch64/add64_mut_clobber_x19.bin",
+      "satisfied": [
+        "arith.add64/sum"
+      ],
+      "control": "abi.saved.aarch64"
+    },
+    {
+      "id": "module.correct.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/module.aarch64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "module.callee_result.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/module.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "link.arith.add64.ensures",
+      "module": {
+        "arith": "fixtures/aarch64/add64_mut_sub.bin"
+      },
+      "blame": "callee",
+      "control": "module.correct.aarch64"
+    },
+    {
+      "id": "module.callee_abi.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/module.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "link.arith.add64.abi",
+      "module": {
+        "arith": "fixtures/aarch64/add64_mut_clobber_x19.bin"
+      },
+      "blame": "callee",
+      "control": "module.correct.aarch64"
+    },
+    {
+      "id": "module.caller_requires.aarch64",
+      "category": "module",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/module.strict.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "link.arith.add64.requires",
+      "blame": "caller",
+      "satisfied": [
+        "arith.sum3/sum"
+      ],
+      "forbid_violations": [
+        "link.arith.add64.ensures"
+      ],
+      "control": "module.correct.aarch64"
+    },
+    {
+      "id": "argument.unsigned_correct.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/unsigned.aarch64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "argument.upper_bits.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/unsigned.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "arith.zext32/zero_extended",
+      "artifact": "examples/security_checks/aarch64/upper_bits.bin",
+      "control": "argument.unsigned_correct.aarch64"
+    },
+    {
+      "id": "argument.signed_correct.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/signed.aarch64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "argument.wrong_sign.aarch64",
+      "category": "argument",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/signed.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "arith.sext32/sign_extended",
+      "artifact": "examples/security_checks/aarch64/zero_extend.bin",
+      "control": "argument.signed_correct.aarch64"
+    },
+    {
+      "id": "effect.routine_syscall.aarch64",
+      "category": "effect",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/sum.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "artifact": "examples/security_checks/aarch64/syscall.bin",
+      "control": "abi.correct.aarch64"
+    },
+    {
+      "id": "effect.output_allowed.aarch64",
+      "category": "effect",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/output.allowed.aarch64.suite.toml",
+      "admission": "ACCEPT_WITHIN_SCOPE"
+    },
+    {
+      "id": "effect.output_denied.aarch64",
+      "category": "effect",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/output.denied.aarch64.suite.toml",
+      "admission": "REJECT",
+      "property": "effects.no_forbidden",
+      "control": "effect.output_allowed.aarch64"
+    },
+    {
+      "id": "guard.unsupported.aarch64",
+      "category": "guard",
+      "isa": "aarch64",
+      "suite": "examples/security_checks/sum.aarch64.suite.toml",
+      "admission": "HOLD",
+      "artifact": "fixtures/aarch64/add64_mut_udf.bin",
+      "reason": "UNSUPPORTED_DURING_RUN",
+      "forbid_violations": [
+        "effects.no_forbidden"
+      ]
+    }
+  ]
+}

@@ -1486,3 +1486,19 @@ draft.2 に残した [U]/[R] を、三つの調査で確かめた。本文の [A
 解放後使用のXMLにより、正規化器が解放stackを確保stackとしていた不具合が分かった。`free_frame` と `alloc_frame` を分け、実記録を使った負の試験9件と既存の正規化器の14試験・故障注入9通りを通した。最初の探索実行はwatchpoint再表示の数え方で照合エラーを出したため、修正後に全件を実行し直した。
 
 これはstdio経路での校正であり、既存のHTTP/OS観測実験との統合比較や保留入力での主比較ではない。18.2のCの採用判断は保留を維持する。詳細・再実行手順は `fx/F11.md`。VMで開始した試験は接続断で記録一式を回収できず、結果には含めない。
+
+### A14. X3：呼出し単位のアクセス制約を通常CLIで検証（2026-10-20）
+
+`examples/security_access/` に、8 byteをコピーするx86-64・AArch64の契約とBinding、正常版と4変異を追加した。`x3/run.py` の480回のprotocol実行では、24入力ごとに5成果物の最終general register・flags・data page・stack pageが一致した。全data pageをmapしたまま入力の書込みとauditの読取りを禁止すると、対象の違反アクセスだけで停止した。許可されたstack操作は通った。
+
+通常の `mukoz check` でも、両ISAで正常版とstack版が24/24充足、auditの読取り・入力の一時書換えと復元・入力範囲の直後の読取りが各24/24メモリ違反だった。6組の反例をreplayし、VIOLATEDを再現した。Suiteの必須claimは外していない。`tests/security_access.rs` の3試験は、許可された操作を通すことに加え、コードを変えずBindingの権限だけを広げると対象の違反版が通ることを確認する。
+
+`x3/native_control.py` では、同じx86-64のassemblyを一つの有効なallocation上で実行した。3入力×5成果物の15回で応答は期待どおり、Memcheckのエラーは0件。allocator単位の有効性と、呼出しの契約で許されたアクセスを区別する例になる。
+
+15.3の共通trace projection案に対し、今回は固定した初期状態での対実行を採用した。通常CLIとは別のprotocol対照に安全性の承認は与えない。人工的なroutine・列挙入力・emulated実行の範囲であり、実アプリの認可推定や費用比較は未実施。証拠・再実行手順は `x3/README.md`、利用者向け手順は `examples/security_access/README.md`。既存エミュレータとjudgeの変更は必要なかった。
+
+### A15. メモリ以外の4種類の契約違反（2026-10-20）
+
+`examples/security_checks/` に、ABI、モジュール境界、引数の幅・符号、禁止された作用の実行例を追加した。両ISAの30例はACCEPT_WITHIN_SCOPE 12・REJECT 16・HOLD 2で、16反例の再生も一致し、照合エラーは0件だった。計算結果が正しいABI破壊とcallerの前提違反も検出した。未対応命令はHOLD、許可された出力やregisterの正しい保存は充足の対照とした。
+
+`tests/security_checks.rs` で行列全体と再生を試験し、`examples/security_checks/test_verifier.py` の11試験で記録の改変・欠測・責任の誤りを検出した。既存の命令意味・ABI・module監視を利用し、新たな検査エンジンは追加していない。明示した契約・列挙入力・emulated実行の範囲。記録と限界は `security-checks/README.md`。

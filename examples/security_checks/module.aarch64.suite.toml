@@ -1,0 +1,8 @@
+schema = "mukoz.suite/1"
+id = "security.modules.aarch64"
+contract = "../link_sum3/contract.toml"
+binding = "../link_sum3/binding.aarch64.toml"
+[generate]
+seed = "20261020"
+boundary = "none"
+random_cases = 16

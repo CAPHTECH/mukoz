@@ -79,6 +79,14 @@ observed, not on how the binary was made ([docs/01](docs/01-concept.md)). It fit
    hidden oracle on every judgement. A verdict is only as strong as the suite, though: one
    to-do mutation was exposed by 1 of 1570 generated cases.
 
+For a runnable security example, [security access contracts](examples/security_access/README.md)
+checks a temporary write that is restored and a read from a write-only buffer. Their final data
+match a correct copy, but the access contracts reject them and provide replayable counterexamples.
+The example works for x86-64 and AArch64 with the emulated executor.
+[Four further security checks](examples/security_checks/README.md) cover ABI preservation,
+caller/callee contracts, integer argument extension and permitted system-call effects, with
+positive controls and replayable violations on both ISAs.
+
 The trials are summarized in [eval/RESULTS.md](eval/RESULTS.md).
 
 It does not fit:

@@ -1,0 +1,14 @@
+schema = "mukoz.contract/1"
+id = "arith.sext32"
+boundary = "routine"
+[inputs]
+a = "bv32"
+[results]
+value = "bv64"
+[[ensures]]
+id = "sign_extended"
+expr = "result.value == sext(input.a, 64)"
+[effects]
+allow = []
+[termination]
+kind = "must_return"

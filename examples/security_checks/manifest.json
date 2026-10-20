@@ -1,0 +1,13 @@
+{
+  "objcopy": "llvm-objcopy, compatible with GNU objcopy",
+  "artifacts": {
+    "x86_64/sign_extend.bin": "04d718c1a94e2c258887cc8954400c1adc6bad48dcc406d6636dc53409d5dbe4",
+    "x86_64/syscall.bin": "eca872a0630e454523df656f275e6e6a7fc9663c6fa1765723a15dc9d5c98d13",
+    "x86_64/upper_bits.bin": "f84e915a39a42129d4d8c8f1c771b4a320ba7b1ab0c17754721be4ff7b835a21",
+    "x86_64/zero_extend.bin": "b7fe494801ddec5193193abd8d564874b127e17fa0864df0bc1698d4f17b3c54",
+    "aarch64/sign_extend.bin": "3675f6500bf163eb6a8c343268e06898b384d93b12ea0bc696984d8679a0c808",
+    "aarch64/syscall.bin": "69bc619a3ac5243fd5703a7c5f110b6513683aaccdc57eb8e763b5918d851dad",
+    "aarch64/upper_bits.bin": "110f46b5b35c069160560c6ad6786f647dd44e8760a52a46fc22dbbcd7630b91",
+    "aarch64/zero_extend.bin": "801b2f67a2008c26bc526cf57b2f27dc997bef2e126dabafc875c37492288da2"
+  }
+}

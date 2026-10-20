@@ -1,0 +1,128 @@
+{
+  "schema": "secobs.x3.native_control/0",
+  "scope": "x86-64 only, 3 inputs per variant, one live allocation",
+  "valgrind": "valgrind-3.24.0",
+  "rows": [
+    {
+      "variant": "correct",
+      "value": "0x0",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "543e096824cd6f16b717ab4f5e324bd67d0f5fa222f654c5c02376df6ec2c058"
+    },
+    {
+      "variant": "correct",
+      "value": "0x1",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "543e096824cd6f16b717ab4f5e324bd67d0f5fa222f654c5c02376df6ec2c058"
+    },
+    {
+      "variant": "correct",
+      "value": "0xffffffffffffffff",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "543e096824cd6f16b717ab4f5e324bd67d0f5fa222f654c5c02376df6ec2c058"
+    },
+    {
+      "variant": "read_audit",
+      "value": "0x0",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "5acb059266d636d8c43b51c18e1fc5028432fcac98813fa0dbc5580e353b9012"
+    },
+    {
+      "variant": "read_audit",
+      "value": "0x1",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "5acb059266d636d8c43b51c18e1fc5028432fcac98813fa0dbc5580e353b9012"
+    },
+    {
+      "variant": "read_audit",
+      "value": "0xffffffffffffffff",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "5acb059266d636d8c43b51c18e1fc5028432fcac98813fa0dbc5580e353b9012"
+    },
+    {
+      "variant": "restore_source",
+      "value": "0x0",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "7ab91296d49faae2f875909fe431cd53be0194457996c88c1c6b4a799b892e92"
+    },
+    {
+      "variant": "restore_source",
+      "value": "0x1",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "7ab91296d49faae2f875909fe431cd53be0194457996c88c1c6b4a799b892e92"
+    },
+    {
+      "variant": "restore_source",
+      "value": "0xffffffffffffffff",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "7ab91296d49faae2f875909fe431cd53be0194457996c88c1c6b4a799b892e92"
+    },
+    {
+      "variant": "read_past_source",
+      "value": "0x0",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "cddd35892af030250a8f72d7f4dd7c1cdcd41ac6f83b412d720a6fcec580f0d8"
+    },
+    {
+      "variant": "read_past_source",
+      "value": "0x1",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "cddd35892af030250a8f72d7f4dd7c1cdcd41ac6f83b412d720a6fcec580f0d8"
+    },
+    {
+      "variant": "read_past_source",
+      "value": "0xffffffffffffffff",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "cddd35892af030250a8f72d7f4dd7c1cdcd41ac6f83b412d720a6fcec580f0d8"
+    },
+    {
+      "variant": "scratch",
+      "value": "0x0",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "15e9875b5a8d552cd50c129ac203326b462d9a112f61cfee560ff88d864c4a1b"
+    },
+    {
+      "variant": "scratch",
+      "value": "0x1",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "15e9875b5a8d552cd50c129ac203326b462d9a112f61cfee560ff88d864c4a1b"
+    },
+    {
+      "variant": "scratch",
+      "value": "0xffffffffffffffff",
+      "response_ok": true,
+      "memcheck_errors": 0,
+      "exit": 0,
+      "assembly_sha256": "15e9875b5a8d552cd50c129ac203326b462d9a112f61cfee560ff88d864c4a1b"
+    }
+  ],
+  "problems": []
+}

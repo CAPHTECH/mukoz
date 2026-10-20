@@ -1,0 +1,9 @@
+schema = "mukoz.suite/1"
+id = "security.output.False.x86_64"
+contract = "output.denied.contract.toml"
+binding = "../hello/binding.x86_64.raw.toml"
+[artifact]
+path = "../../fixtures/process/hello_x86.bin"
+[generate]
+seed = "20261020"
+random_cases = 4

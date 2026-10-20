@@ -1,0 +1,13 @@
+schema = "mukoz.binding/1"
+id = "arith.sext32@aarch64"
+contract = "arith.sext32"
+target = "aarch64/raw/aapcs64/none"
+[entry]
+kind = "raw_offset"
+offset = 0
+[arguments]
+x0 = "input.a"
+[results]
+value = "x0"
+[completion]
+kind = "return_to_sentinel"

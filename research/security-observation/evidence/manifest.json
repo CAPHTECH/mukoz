@@ -18,5 +18,26 @@
       "fx/runs/a-rel",
       "fx/runs/e1-smoke"
     ]
+  },
+  "x3-2.tar.gz": {
+    "sha256": "7997170ea7b0a2d36ba30581c2ff6a36a4cf0b818281899e1217ac0713dce8c4",
+    "bytes": 60011,
+    "directories": [
+      "x3/runs/x3-2"
+    ]
+  },
+  "x3-native-1.tar.gz": {
+    "sha256": "c2725d8cf4e6a9c97392567a2e9f5341e7642ce3d9a6ef4c2f425498dc295b1b",
+    "bytes": 22458,
+    "directories": [
+      "x3/runs/native-1"
+    ]
+  },
+  "security-checks-matrix-2.tar.gz": {
+    "sha256": "2a31fc5575f1b19029a9c9bd55ed474398b9ee5066f9ab4b5f99f58be41c6be8",
+    "bytes": 96206,
+    "directories": [
+      "security-checks/runs/matrix-2"
+    ]
   }
 }

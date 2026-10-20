@@ -334,6 +334,12 @@ kind = "return_to_sentinel"
 
 The content for each ABI is set by the table in chapter 05 §5.4.
 
+The [security access example](../examples/security_access/README.md) uses these claims to reject
+reads from a write-only buffer and temporary writes to a read-only input, even when a control
+execution leaves the expected final data. It includes both x86-64 and AArch64 binaries.
+The [further security examples](../examples/security_checks/README.md) also exercise ABI claims,
+module contracts, signed/unsigned argument extension and permitted effects.
+
 ### Process (x86_64 Linux ELF)
 
 ```toml

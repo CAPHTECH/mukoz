@@ -1,0 +1,39 @@
+{
+  "schema": "secobs.x3/0",
+  "scope": "synthetic routines, enumerated inputs, emulated only",
+  "engine": {
+    "engine": "icicle-emu git 3292602fd485 (interpreter; SLEIGH specs from icicle-emu/ghidra 50230050fa58)",
+    "program": "mukoz-emu-icicle",
+    "protocol": "mukoz-emu/1",
+    "version": "0.1.0"
+  },
+  "engine_sha256": "17e615ae359c9e4ab5e117a8114fcbf8d125ce569e1428df6830b9a1b51bd164",
+  "mukoz_sha256": "e22e1c0f95bcc34d5b9a615854c9e5c87fe38a1ce4ce046c4fa02fee785b6d56",
+  "runner_sha256": "3bfde0fc448d392d1cfe2f3026187a194b2ba446ea953c142aa88198bd0c8358",
+  "controls": {
+    "x86_64": {
+      "cases": 24,
+      "variants": 5,
+      "all_final_states_equal": true
+    },
+    "aarch64": {
+      "cases": 24,
+      "variants": 5,
+      "all_final_states_equal": true
+    }
+  },
+  "protocol_runs": 480,
+  "cli": {
+    "x86_64/correct": "ACCEPT_WITHIN_SCOPE",
+    "x86_64/read_audit": "REJECT",
+    "x86_64/restore_source": "REJECT",
+    "x86_64/read_past_source": "REJECT",
+    "x86_64/scratch": "ACCEPT_WITHIN_SCOPE",
+    "aarch64/correct": "ACCEPT_WITHIN_SCOPE",
+    "aarch64/read_audit": "REJECT",
+    "aarch64/restore_source": "REJECT",
+    "aarch64/read_past_source": "REJECT",
+    "aarch64/scratch": "ACCEPT_WITHIN_SCOPE"
+  },
+  "problems": []
+}

@@ -1,0 +1,37 @@
+schema = "mukoz.binding/1"
+id = "security.copy_word@aarch64"
+contract = "security.copy_word"
+target = "aarch64/raw/aapcs64/none"
+
+[entry]
+kind = "raw_offset"
+offset = 0
+
+[arguments]
+x0 = "addr(dst)"
+x1 = "addr(src)"
+x2 = "addr(audit)"
+
+[results]
+status = "x0"
+
+[regions.dst]
+size = "bv64(8)"
+init = "before.dst"
+access = "rw"
+observe_as = "after.dst"
+
+# The caller lends the input for reads, never for temporary writes.
+[regions.src]
+size = "bv64(8)"
+init = "le_bytes(input.value)"
+access = "r"
+
+# A write-only audit sink: existing contents must not be read by this call.
+[regions.audit]
+size = "bv64(8)"
+init = 'hex"43524544454e544c"'
+access = "w"
+
+[completion]
+kind = "return_to_sentinel"

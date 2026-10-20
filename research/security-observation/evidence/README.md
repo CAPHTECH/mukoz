@@ -4,6 +4,10 @@
 
 `regression-fixtures.tar.gz` は、既存の正規化器・A0/A1・E1の記録ベースの試験に必要な入力をまとめたもの。全実験の記録ではない。
 
+`x3-2.tar.gz` は途中アクセスと最終状態の比較、`x3-native-1.tar.gz` はMemcheckによるnative対照の記録である。`x3-2.summary.json` と `x3-native-1.summary.json` に集計を保存した。
+
+`security-checks-matrix-2.tar.gz` はABI・モジュール・引数・作用の30例と16反例の再生記録である。集計は `security-checks-matrix-2.summary.json` にある。
+
 各アーカイブのsha256と展開されるディレクトリを `manifest.json` に記録している。試験前に次のコマンドで復元する。既存の同名ファイルはアーカイブの内容で置き換わる。
 
 ```sh

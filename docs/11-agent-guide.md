@@ -1,6 +1,6 @@
 # 11. Usage for agents
 
-The procedure an AI agent follows to generate or fix a binary without source and to check with Mukoz whether it satisfies its contract. The implemented scope is in chapter 04 §4.10 and chapter 07 §7.2. If they disagree, the implementation is correct.
+The procedure an AI agent follows to generate or fix a binary without source and to check with Mukoz whether it satisfies its contract. The same checks apply to compiled binaries. Section 11.9 covers access policies and other security contracts. The implemented scope is in chapter 04 §4.10 and chapter 07 §7.2. If they disagree, the implementation is correct.
 
 ## 11.1 The generate-and-fix loop
 
@@ -37,7 +37,7 @@ Kinds of property, and where to suspect first:
 |---|---|---|
 | `<contract>/<ensures ID>` | The result does not satisfy the contract's expression | Compare subexpression values with the inputs |
 | `<contract>/frame.<state>` | State that must not change did change | The extent of writes |
-| `machine.memory.access` | Access outside the permitted regions | Terminators, off-by-one, over-wide loads |
+| `machine.memory.access` | Access outside a permitted region or contrary to its read/write permissions | Terminators, off-by-one, over-wide loads, reads from write-only buffers, temporary writes to read-only inputs |
 | `machine.returned` | Did not return to the caller with the correct SP | The number of push/pop, the ret path, undefined instructions |
 | `machine.abi.callee_saved` | A register that must be preserved changed | rbx, rbp, r12–r15 (x86), x19–x29 (aarch64) |
 | `machine.abi.flags` | Returned with the x86 DF set | A `cld` after `std` |
@@ -135,3 +135,72 @@ submission. Each point says what was observed; the counts are small (1–4 runs 
     Observed: one agent wrote into the repository.
   - Stop subagents when the agent reports. Observed: one spawned subagent kept editing after
     the report.
+
+## 11.9 Checking security contracts
+
+Use this procedure when a returned value can be correct while an intermediate operation
+violates the caller's policy. The applications and recorded results are in
+[01 §1.8](01-concept.md#18-applying-mukoz-to-security-contracts).
+
+1. Define the unit and its policy before checking the candidate. Identify the entry point,
+   inputs, initial memory, permitted reads and writes, allowed effects and completion condition.
+2. Write the expected result in the Contract and map it to the binary in the Binding. For
+   memory policy, set region sizes and `access` separately from final-state observations.
+   `access = "r"` forbids even a write that is undone before return; `access = "w"` forbids
+   reading existing contents. A frame condition only checks what remains unchanged at exit.
+3. Use an emulated Suite with the required claims enabled. Include boundary inputs and a
+   permitted control as well as deliberate violations. For modules, configure the callee
+   monitors (§11.7); for effects, choose a supported model (§11.6).
+4. Run `check`, inspect the violated property and finding, and replay its counterexample
+   with the same store. After fixing the artifact, replay against the replacement and run
+   the full Suite without `--fail-fast`.
+5. Read the admission together with scope and limitations (§11.5). Keep HOLD and unobserved
+   properties visible. Do not drop a required claim or widen a permission to make a candidate
+   pass unless the intended policy actually changes.
+
+From the repository root, the supplied fixtures can be checked without rebuilding their
+assembly or running them natively:
+
+```sh
+cargo build --release
+
+# Correct copy: ACCEPT_WITHIN_SCOPE.
+./target/release/mukoz check examples/security_access/suite.x86_64.toml --store .mukoz
+
+# Same expected final data, but a temporary write to read-only src: REJECT.
+./target/release/mukoz check examples/security_access/suite.x86_64.toml \
+  --artifact examples/security_access/x86_64/restore_source.bin --store .mukoz
+
+# Read from a write-only audit buffer on AArch64: REJECT.
+./target/release/mukoz check examples/security_access/suite.aarch64.toml \
+  --artifact examples/security_access/aarch64/read_audit.bin --store .mukoz
+
+# Substitute an ID from the check's claim.counterexamples or finding.
+./target/release/mukoz replay <counterexample-id> --store .mukoz
+```
+
+For `machine.memory.access`, inspect the instruction offset, address, access width,
+read/write direction and the region permission. Execution stops at the forbidden access;
+unfinished output checks remain INCONCLUSIVE. Widening `src` from `r` to `rw` permits the
+temporary write by the same binary: the verdict depends on the supplied policy.
+
+The other examples exercise distinct obligations:
+
+| Question | Runnable example | Finding to inspect |
+|---|---|---|
+| Does the routine preserve its caller's registers? | `security_checks/sum.x86_64.suite.toml` with `fixtures/x86_64/add64_mut_clobber_rbx.bin` | `machine.abi.callee_saved`; the sum can still be satisfied |
+| Does the caller obey its callee's precondition? | `security_checks/module.strict.x86_64.suite.toml` | `link.arith.add64.requires`, `blame=caller`; the final sum can still be satisfied |
+| Is a narrow signed argument extended correctly? | `security_checks/signed.x86_64.suite.toml` with `security_checks/x86_64/zero_extend.bin` | `arith.sext32/sign_extended` |
+| Is output permitted by this process contract? | `security_checks/output.allowed.aarch64.suite.toml` and `security_checks/output.denied.aarch64.suite.toml` | The same binary passes the first and violates `effects.no_forbidden` in the second |
+
+Paths beginning with `security_checks/` in this table are relative to `examples/`.
+Use `--artifact` for the replacement binaries. The
+[access example guide](../examples/security_access/README.md) and
+[further checks guide](../examples/security_checks/README.md) provide the complete commands,
+both ISA variants, permitted controls and matrix runner with counterexample replay.
+
+These examples require no native execution or VM. They check explicit policies within
+the emulator's supported model and enumerated cases. They do not infer authorization,
+prove complete ABI compliance or control-flow integrity, or establish a real application's
+network policy. Module monitors also do not enforce separate per-callee memory permissions
+([12](12-process-and-modules.md)).

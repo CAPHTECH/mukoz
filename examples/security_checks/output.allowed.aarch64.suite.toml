@@ -1,0 +1,9 @@
+schema = "mukoz.suite/1"
+id = "security.output.True.aarch64"
+contract = "../hello/contract.toml"
+binding = "../hello/binding.aarch64.raw.toml"
+[artifact]
+path = "../../fixtures/process/hello_a64.bin"
+[generate]
+seed = "20261020"
+random_cases = 4

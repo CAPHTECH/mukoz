@@ -1,0 +1,31 @@
+schema = "mukoz.contract/1"
+id = "security.copy_word"
+boundary = "routine"
+modifies = ["dst"]
+
+[inputs]
+value = "bv64"
+
+[state]
+dst = { type = "bytes", max_len = 8 }
+
+[results]
+status = "bv64"
+
+[[requires]]
+id = "word_buffer"
+expr = "len(before.dst) == bv64(8)"
+
+[[ensures]]
+id = "copied"
+expr = "after.dst == le_bytes(input.value)"
+
+[[ensures]]
+id = "ok"
+expr = "result.status == bv64(0)"
+
+[effects]
+allow = []
+
+[termination]
+kind = "must_return"

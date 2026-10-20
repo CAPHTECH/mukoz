@@ -101,3 +101,45 @@ The trials in [eval/RESULTS.md](../eval/RESULTS.md) inform why Mukoz checks arti
 - **The design is carried outside the code.** The 17 x86-64 routines in the trials written without a compiler had no `call`. [R] When code is regenerated rather than maintained, the contract, the Binding and the suite are what carry the design from one artifact to the next, so they are what to version and review.
 
 Not established: whether this makes generated software a different kind of thing, or only makes regenerating it cheaper. The trials included check-and-fix iterations, but did not measure repeated regeneration as a way to maintain software, or its cost.
+
+## 1.8 Applying Mukoz to security contracts
+
+Mukoz can check whether a binary respects an explicit access policy, calling convention,
+module contract or effect restriction on the cases run. This applies to compiled binaries
+as well as generated machine code. Start with a unit whose entry point, initial state,
+permitted operations and completion condition can be specified in a Binding.
+
+| Application | What to specify | What the examples detect |
+|---|---|---|
+| Memory access policy | Region sizes and read/write permissions in the Binding | Reading a write-only buffer, temporarily writing a read-only input and restoring it, or reading past the input view |
+| Calling convention | The target ABI and required machine claims | A correct arithmetic result that nevertheless clobbers a callee-saved register |
+| Module boundaries | Callee contracts and boundary monitors | A caller violating a callee's precondition, or a callee violating its result or ABI obligations, with caller/callee attribution |
+| Integer arguments | Input widths and explicit zero/sign-extension requirements | Depending on unspecified upper register bits or extending a signed value incorrectly |
+| Permitted effects | The contract's allowed effects and the executor's environment model | A system-call attempt in a pure routine or output forbidden by a process contract |
+
+**Observed:** the [access-policy examples](../examples/security_access/README.md) run on
+x86-64 and AArch64. In 480 protocol executions, the five variants had identical final
+general registers, flags, data pages and stack pages for each of 24 inputs per ISA when
+the accesses were permitted. Applying the narrower permissions exposed the three forbidden
+access variants through ordinary `mukoz check`; the correct copy and permitted stack use
+passed. Six counterexamples were replayed. In a separate x86-64 native control, all five
+variants produced the expected output with no Memcheck errors for three inputs, using
+one live allocation. The Binding expresses a call's access policy even where the allocator
+considers the memory valid.
+
+**Observed:** the [four further security checks](../examples/security_checks/README.md)
+cover both ISAs in 30 examples: 12 ACCEPT_WITHIN_SCOPE, 16 REJECT and 2 HOLD, all matching
+the registered expectations. All 16 rejected checks had their counterexamples replayed.
+The HOLD controls use unsupported instructions; an inability to execute them is not
+reported as a forbidden effect. Records and reproduction steps are linked from the examples.
+
+These are synthetic routines and modeled processes with enumerated inputs. They establish
+neither general vulnerability detection nor an application's authorization policy. The caller
+supplies that policy; Mukoz checks it. A postcondition or frame checks the final state, so it
+cannot replace a prohibition on intermediate accesses. Module boundary monitors check values
+and ABI obligations; they do not narrow memory permissions to each callee's regions
+([12 §12.4](12-process-and-modules.md#124-boundary-monitoring-and-blame)). Modeled effects do not establish the absence of
+unobserved effects on a real OS. The native Memcheck control is a separate experiment,
+not an observation capability of the ordinary emulated check.
+
+For the procedure and commands, see [11 §11.9](11-agent-guide.md#119-checking-security-contracts).

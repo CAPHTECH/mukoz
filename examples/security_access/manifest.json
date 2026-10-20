@@ -1,0 +1,15 @@
+{
+  "objcopy": "llvm-objcopy, compatible with GNU objcopy",
+  "artifacts": {
+    "x86_64/correct.bin": "7f67a88f267fc92e692675a8711ae26f8c7b20adca2f08563b8dca66915dd3be",
+    "x86_64/read_audit.bin": "00462a3149d7d254ddef56a5c1ddbc89c5835a6ef22ad94726348aa7a63dd760",
+    "x86_64/read_past_source.bin": "8a5342efabdf7f2c76e35c4021ebfff11da07e7c4ae30a57a34922110e62edcb",
+    "x86_64/restore_source.bin": "b8f918d67aaf554b58b4a67d8159d76af62e3fe2f633bbbcca06ed72eb94d154",
+    "x86_64/scratch.bin": "598d628c158f9cc07c7f2dab84140f5634cac56691ea55f06401321e1a87bd8e",
+    "aarch64/correct.bin": "c591c70cb09b8813fc38cb1f63744203daa15f50d1abbdce9de254656d68097c",
+    "aarch64/read_audit.bin": "d4d2d34f430dec726e0a8e2800253084e4b1221a7b4fc4aee5225dc32b9f79af",
+    "aarch64/read_past_source.bin": "f34a04e9391bb63d09f630bec64b0f59da198e1d52d6c70e2ae6566a92961025",
+    "aarch64/restore_source.bin": "5087a6af9ede11153055d0640ca73f6ddd0591cd1855f4b009756a8a41ba446e",
+    "aarch64/scratch.bin": "3f64e55a63012b60af6e61b64ff10f74558d386c9ac1ae2f00a6367d00efa083"
+  }
+}
